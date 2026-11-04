@@ -41,7 +41,7 @@ const commit = execFileSync("git", ["rev-parse", "HEAD"], {
 }).trim();
 await writeFile(
   join(output, "交付说明.txt"),
-  `当前版本：${commit}\n\npages-deploy.zip：静态部署包，解压后根目录含 index.html，可用于 Cloudflare Pages Direct Upload。\npages-source.zip：源码，解压后 npm ci、npm run build。\npages-history.bundle：完整 Git 提交历史，可执行 git clone pages-history.bundle local-resource-pages。\n\n本次仅交付，未进行线上发布。构建命令 npm run build，输出目录 dist。\n用户本地资源、解压密码、测试样本与浏览器缓存均不包含在交付包中。\n`,
+  `当前版本：${commit}\n\npages-deploy.zip：静态部署包，解压后根目录含 index.html，可用于 Cloudflare Pages Direct Upload。\npages-source.zip：源码，解压后 npm ci、npm run build。\npages-history.bundle：完整 Git 提交历史，可执行 git clone pages-history.bundle local-resource-pages。\n\nCloudflare Pages 构建设置：Build command 填 npm run build，Build output directory 填 dist，Deploy command 留空（预填 npx wrangler deploy 是 Workers 命令，会在构建成功后报 Missing entry-point）。\n\n本次仅交付，未进行线上发布。构建命令 npm run build，输出目录 dist。\n用户本地资源、解压密码、测试样本与浏览器缓存均不包含在交付包中。\n`,
   "utf8",
 );
 console.log(

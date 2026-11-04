@@ -22,6 +22,8 @@ npm run build
 
 Git 集成：框架预设选择 Vite，构建命令 `npm run build`，产物目录 `dist`，Node.js 版本设置为 24。只发布构建产物，不发布本地资源目录。
 
+**Deploy command 必须留空**（部分新建项目会预填 `npx wrangler deploy`，那是 Workers 的命令，会在构建成功后报 `Missing entry-point to Worker script or to assets directory`，日志里还会出现 `you have run wrangler deploy on a Pages project`）。Pages 会在构建完成后自行上传 `dist`，不需要再跑部署命令；确实要填就填 `npx wrangler pages deploy dist`。
+
 直接上传：登录自己的 Cloudflare 账号后执行：
 
 ```sh
