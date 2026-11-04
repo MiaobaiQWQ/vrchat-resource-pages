@@ -29,7 +29,9 @@ npx wrangler login
 npm run deploy
 ```
 
-项目名称在 `wrangler.jsonc` 与 `package.json` 的 deploy 脚本中设置。发布地址和 localhost 的浏览器存储相互独立，首次访问新域名时需要重新添加目录。
+项目名称与产物目录只在 `wrangler.jsonc` 中设置（`npm run deploy` 直接沿用配置），换账号或改项目名只改这一处。构建产物使用相对路径，部署在根路径、子目录或 GitHub Pages 项目页下都能直接打开。
+
+发布地址和 localhost 的浏览器存储相互独立，首次访问新域名时需要重新添加目录。
 
 只交付构建包时，提交代码后执行 `npm run release`。`release/pages-deploy.zip` 可解压后用于 Pages Direct Upload；`pages-source.zip` 为源码，`pages-history.bundle` 保留 Git 提交历史。本项目不需要 Pages Functions、数据库或存储桶。
 
