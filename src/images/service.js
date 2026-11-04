@@ -10,7 +10,7 @@ export class ImageService {
     return this.cache.get(entry.id);
   }
   async load(entry) {
-    const ext = extension(entry.path), file = await entry.read();
+    const ext = entry.format || extension(entry.path), file = await entry.read();
     if (file.size > 512 * 1024 * 1024) throw new Error('图像过大，请先缩小图像后预览');
     if (ext === '.psd') {
       if (!this.worker) {

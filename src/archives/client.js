@@ -34,7 +34,7 @@ export class ArchiveClient {
     else await storage('preferences', 'delete', 'password:' + resourceId).catch(() => {});
   }
   async children(entry, resourceId) {
-    const kind = extension(entry.path), file = await entry.read();
+    const kind = entry.format || extension(entry.path), file = await entry.read();
     if (['.rar', '.7z'].includes(kind)) return this.otherChildren(entry, resourceId);
     const listing = await this.request({ operation: 'list', id: entry.id, file, kind });
     return listing.entries.filter(item => !isAuxiliary(item.path)).map(item => ({
@@ -66,5 +66,5 @@ export class ArchiveClient {
         read: async () => { if (file.size > 512 * 1024 * 1024) throw new Error('单个文件超过浏览器解析限制'); const current = await open(); const item = current.items.find(item => item.path + item.file.name === path + file.name); return item.file.extract(); } }];
     });
   }
-  forget(sourceId) { for (const key of this.passwords.keys()) if (key.startsWith(sourceId + ':')) this.passwords.delete(key); }
+  forget(sourceId) { for (const key of this.passwords.keys()) if (key.startsWith(sourceId + ':')) this.passwords.delete(key); for (const [key, value] of this.otherArchives) if (key.startsWith(sourceId + ':')) { value.reader.close(); this.otherArchives.delete(key); } }
 }

@@ -1,6 +1,7 @@
 import { element as el, button, icon, iconButton, sizeLabel, kindIcon, toast } from './elements.js';
 import { kindNames } from '../core/formats.js';
 import { friendlyError } from '../core/async.js';
+const matchesKind = (resource, kind) => kind === 'all' || kind === 'archive' && resource.kind === 'archive' || (resource.detectedKind || resource.kind) === kind;
 
 export class Shell {
   filter = 'all';
@@ -35,8 +36,8 @@ export class Shell {
     const privateLabel = el('span', 'private-label'); privateLabel.append(icon('lock', 14), document.createTextNode('本机私有'));
     topbar.append(menu, searchBox, privateLabel, add, iconButton('切换明暗主题', 'moon', () => { const dark = document.documentElement.dataset.theme !== 'dark'; document.documentElement.dataset.theme = dark ? 'dark' : 'light'; localStorage.setItem('shijian-theme', dark ? 'dark' : 'light'); }));
     this.main = el('main', 'main'); content.append(topbar, this.main);
-    this.fileInput = el('input', 'sr-only'); this.fileInput.type = 'file'; this.fileInput.multiple = true; this.fileInput.setAttribute('aria-label', '选择本地资源文件'); this.fileInput.onchange = () => { const files = [...this.fileInput.files]; this.fileInput.value = ''; this.app.sources.addFiles(files).catch(error => toast(friendlyError(error))); };
-    this.folderInput = el('input', 'sr-only'); this.folderInput.type = 'file'; this.folderInput.multiple = true; this.folderInput.webkitdirectory = true; this.folderInput.setAttribute('aria-label', '选择兼容模式文件夹'); this.folderInput.onchange = () => { const files = [...this.folderInput.files]; this.folderInput.value = ''; this.app.sources.addFiles(files, { folder: true }).catch(error => toast(friendlyError(error))); };
+    this.fileInput = el('input', 'sr-only'); this.fileInput.type = 'file'; this.fileInput.multiple = true; this.fileInput.setAttribute('aria-label', '选择本地资源文件'); this.fileInput.onchange = () => { const files = [...this.fileInput.files], sourceId = this.reselectId; this.reselectId = null; this.fileInput.value = ''; this.app.sources.addFiles(files, { sourceId }).catch(error => toast(friendlyError(error))); };
+    this.folderInput = el('input', 'sr-only'); this.folderInput.type = 'file'; this.folderInput.multiple = true; this.folderInput.webkitdirectory = true; this.folderInput.setAttribute('aria-label', '选择兼容模式文件夹'); this.folderInput.onchange = () => { const files = [...this.folderInput.files], sourceId = this.reselectId; this.reselectId = null; this.folderInput.value = ''; this.app.sources.addFiles(files, { folder: true, sourceId }).catch(error => toast(friendlyError(error))); };
     this.drop = el('div', 'drop-overlay'); this.drop.append(icon('folder', 56), el('h2', '', '把资源放到这里'), el('p', '', '文件夹、模型、贴图或压缩包，都会留在本机'));
     let depth = 0;
     window.addEventListener('dragenter', event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); depth++; this.drop.classList.add('visible'); } });
@@ -53,7 +54,7 @@ export class Shell {
   }
   async pickDirectory() {
     if (!window.showDirectoryPicker) { this.folderInput.click(); return; }
-    try { const handle = await window.showDirectoryPicker({ mode: 'read', id: 'shijian-library' }); await this.app.sources.addDirectory(handle); }
+    try { const handle = await window.showDirectoryPicker({ mode: 'read', id: 'shijian-library' }); const sourceId = this.reselectId; this.reselectId = null; await this.app.sources.addDirectory(handle, { sourceId }); }
     catch (error) { if (error.name !== 'AbortError') { if (error.name === 'SecurityError' || error.name === 'NotSupportedError') this.folderInput.click(); else toast(friendlyError(error)); } }
   }
   select(kind, sourceId = '') { this.filter = kind; this.sourceId = sourceId; this.limit = 48; this.sidebar.classList.remove('open'); this.render(); }
@@ -66,7 +67,7 @@ export class Shell {
       const actions = el('div', 'source-actions');
       if (['prompt', 'denied', 'error'].includes(source.status)) actions.append(iconButton('恢复目录访问', 'lock', () => this.app.sources.restore(source.id).catch(error => toast(friendlyError(error)))));
       else if (source.handle && source.status !== 'scanning') actions.append(iconButton('刷新此目录', 'refresh', () => this.app.sources.scan(source.id)));
-      if (source.status === 'reselect') actions.append(iconButton('重新选择目录或文件', 'folder', () => source.kind === 'files' ? this.fileInput.click() : this.pickDirectory()));
+      if (source.status === 'reselect') actions.append(iconButton('重新选择目录或文件', 'folder', () => { this.reselectId = source.id; source.kind === 'files' ? this.fileInput.click() : this.pickDirectory(); }));
       actions.append(iconButton(`移除来源 ${source.name}`, 'close', async () => { this.app.detail.close(); this.app.images.forget(source.id); this.app.covers.forget(source.id); await this.app.catalog.removeSource(source.id); if (this.sourceId === source.id) this.sourceId = ''; this.render(); }));
       row.append(choose, actions); this.sourceList.append(row);
     }
@@ -77,11 +78,11 @@ export class Shell {
     const all = this.app.catalog.resources, query = this.query.normalize('NFKC').toLowerCase().trim();
     const kinds = ['all', 'model', 'texture', 'archive', 'unity', 'audio', 'video', 'document', 'other'];
     this.nav.replaceChildren(...kinds.map(kind => {
-      const count = kind === 'all' ? all.length : all.filter(resource => (resource.detectedKind || resource.kind) === kind).length;
+      const count = all.filter(resource => matchesKind(resource, kind)).length;
       const node = button(kindNames[kind], kind === 'all' ? 'grid' : kindIcon(kind), () => this.select(kind), 'nav-item' + (this.filter === kind && !this.sourceId ? ' active' : ''));
-      if (count) node.append(el('span', 'nav-count', count.toLocaleString())); return node;
+      node.dataset.kind = kind; if (count) node.append(el('span', 'nav-count', count.toLocaleString())); return node;
     }));
-    const list = all.filter(resource => (!this.sourceId || resource.sourceId === this.sourceId) && (this.filter === 'all' || (resource.detectedKind || resource.kind) === this.filter) && (!query || [resource.name, resource.path, ...resource.avatars].join(' ').normalize('NFKC').toLowerCase().includes(query)));
+    const list = all.filter(resource => (!this.sourceId || resource.sourceId === this.sourceId) && matchesKind(resource, this.filter) && (!query || [resource.name, resource.path, ...resource.avatars].join(' ').normalize('NFKC').toLowerCase().includes(query)));
     list.sort(this.sort === 'size' ? (a, b) => b.size - a.size : this.sort === 'recent' ? (a, b) => (b.modified || 0) - (a.modified || 0) : (a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
     const header = el('section', 'page-heading'), heading = el('div'); heading.append(el('div', 'eyebrow', '你的私人资源空间'), el('h1', '', this.sourceId ? this.app.sources.sources.get(this.sourceId)?.name || '本地目录' : kindNames[this.filter]));
     const description = el('p', 'page-description', all.length ? `${all.length.toLocaleString()} 份资源 · ${this.app.sources.sources.size} 个本地来源 · ${sizeLabel([...this.app.sources.sources.values()].reduce((n, source) => n + source.size, 0))}` : '让模型、贴图与灵感，在这里井然有序。'); heading.append(description);
@@ -119,6 +120,10 @@ export class Shell {
     else if (status === 'loading') { thumb.replaceChildren(el('span', 'spinner'), el('span', 'thumb-status', '正在生成预览')); }
     else { const placeholder = el('div', 'thumb-placeholder'); placeholder.append(icon(status === 'locked' ? 'lock' : kindIcon(resource.detectedKind || resource.kind), 40)); thumb.replaceChildren(placeholder, el('span', 'thumb-status', status === 'locked' ? '需要密码' : status === 'world' ? '世界不支持预览' : status === 'error' ? '暂不展示' : '暂无预览')); thumb.title = message || ''; }
     card.querySelector('.kind-label').textContent = kindNames[resource.detectedKind || resource.kind];
+    for (const nav of this.nav.querySelectorAll('[data-kind]')) {
+      const count = this.app.catalog.resources.filter(item => matchesKind(item, nav.dataset.kind)).length;
+      let label = nav.querySelector('.nav-count'); if (!label && count) { label = el('span', 'nav-count'); nav.append(label); } if (label) { label.textContent = count.toLocaleString(); label.hidden = !count; }
+    }
   }
   empty(filtered) {
     const node = el('section', 'empty-state'); const illustration = el('div', 'empty-illustration'); illustration.append(el('span', 'empty-tile back'), el('span', 'empty-tile front')); illustration.lastChild.append(icon(filtered ? 'search' : 'folder', 54));

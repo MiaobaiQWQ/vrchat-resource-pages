@@ -1,6 +1,7 @@
 import { storage, purgeSource } from '../core/storage.js';
 import { normalizePath, isAuxiliary } from '../core/paths.js';
 import { fileKind } from '../core/formats.js';
+import { identifyFile } from '../core/signature.js';
 
 export class SourceManager extends EventTarget {
   sources = new Map();
@@ -24,18 +25,18 @@ export class SourceManager extends EventTarget {
     try { await storage('sources', 'put', source.id, record); }
     catch { this.changed('目录可在本次使用，浏览器未能保存恢复信息'); }
   }
-  async addDirectory(handle) {
+  async addDirectory(handle, { sourceId } = {}) {
     for (const source of this.sources.values()) if (source.handle && await source.handle.isSameEntry(handle).catch(() => false)) {
       await this.scan(source.id); return source;
     }
-    const source = { id: crypto.randomUUID(), name: handle.name, handle, kind: 'directory', status: 'granted', files: [], count: 0, size: 0, addedAt: Date.now() };
+    const source = { id: sourceId && this.sources.has(sourceId) ? sourceId : crypto.randomUUID(), name: handle.name, handle, kind: 'directory', status: 'granted', files: [], count: 0, size: 0, addedAt: Date.now() };
     this.sources.set(source.id, source); await this.persist(source); await this.scan(source.id); return source;
   }
-  async addFiles(files, { folder = false } = {}) {
+  async addFiles(files, { folder = false, sourceId } = {}) {
     if (!files.length) return;
     const root = folder ? files[0].webkitRelativePath?.split('/')[0] || '本地文件夹' : files.length === 1 ? files[0].name : `本地文件 · ${files.length} 项`;
-    const source = { id: crypto.randomUUID(), name: root, kind: folder ? 'folder-files' : 'files', status: 'session', files: [], count: 0, size: 0, addedAt: Date.now() };
-    source.files = files.map(file => this.entry(source, folder ? file.webkitRelativePath.split('/').slice(1).join('/') : file.name, () => Promise.resolve(file), file));
+    const source = { id: sourceId && this.sources.has(sourceId) ? sourceId : crypto.randomUUID(), name: root, kind: folder ? 'folder-files' : 'files', status: 'session', files: [], count: 0, size: 0, addedAt: Date.now() };
+    source.files = await Promise.all(files.map(async file => ({ ...this.entry(source, folder ? file.webkitRelativePath.split('/').slice(1).join('/') : file.name, () => Promise.resolve(file), file), ...await identifyFile(file) })));
     source.files = source.files.filter(file => !isAuxiliary(file.path));
     source.count = source.files.length; source.size = source.files.reduce((n, file) => n + file.size, 0);
     this.sources.set(source.id, source); await this.persist(source); this.changed(`已添加 ${source.count} 个本地文件`); return source;
@@ -53,7 +54,7 @@ export class SourceManager extends EventTarget {
         if (controller.signal.aborted) throw new DOMException('已取消读取', 'AbortError');
         const path = normalizePath(prefix + name); if (isAuxiliary(path)) continue;
         if (child.kind === 'directory') await visit(child, path + '/');
-        else try { const file = await child.getFile(); files.push(this.entry(source, path, () => child.getFile(), file)); }
+        else try { const file = await child.getFile(); files.push({ ...this.entry(source, path, () => child.getFile(), file), ...await identifyFile(file) }); }
         catch (error) { warnings.push(path + '：' + error.message); }
         if (files.length && files.length % 150 === 0) { this.dispatchEvent(new CustomEvent('progress', { detail: { id, count: files.length } })); await new Promise(resolve => setTimeout(resolve, 0)); }
       }

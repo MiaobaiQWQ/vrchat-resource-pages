@@ -44,7 +44,7 @@ function rendererFor(canvas, thumbnail = false) {
 }
 
 async function dependencies(entry, resource, catalog) {
-  const mappings = new Map(), ext = extension(entry.path);
+  const mappings = new Map(), ext = entry.format || extension(entry.path);
   if (!['.gltf', '.glb', '.vrm'].includes(ext)) return mappings;
   const file = await entry.read(); let json;
   if (ext === '.gltf') json = JSON.parse(await file.text());
@@ -84,7 +84,7 @@ export async function loadModel(resource, entry, catalog, images, { thumbnail = 
     missing.add(decoded); return WHITE;
   });
   const file = await entry.read(); if (file.size > 512 * 1024 * 1024) throw new Error('模型超过浏览器解析限制，请使用精简版模型');
-  const url = await catalog.url(entry), ext = extension(entry.path); let object, draco, ktx;
+  const url = await catalog.url(entry), ext = entry.format || extension(entry.path); let object, draco, ktx;
   try {
     if (ext === '.fbx') object = await new FBXLoader(manager).loadAsync(url);
     else if (ext === '.obj') object = await new OBJLoader(manager).loadAsync(url);

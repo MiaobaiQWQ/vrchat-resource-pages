@@ -27,8 +27,8 @@ export async function storage(store, action, key, value) {
   });
 }
 
-export async function saveCover(key, blob) {
-  await storage('covers', 'put', key, { blob, at: Date.now() });
+export async function saveCover(key, blob, metadata = {}) {
+  await storage('covers', 'put', key, { blob, ...metadata, at: Date.now() });
   const keys = await storage('covers', 'getAllKeys');
   if (keys.length > 180) {
     const values = await storage('covers', 'getAll');

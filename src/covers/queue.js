@@ -32,12 +32,13 @@ export class CoverQueue extends EventTarget {
       this.update(resource, 'loading');
       const key = resource.id + ':' + resource.size + ':' + resource.modified + ':v1';
       const cached = await storage('covers', 'get', key).catch(() => null);
+      if (cached) { resource.detectedKind = cached.kind; resource.coverGenerated = cached.generated; resource.avatars = cached.avatars || resource.avatars; }
       let blob = cached?.blob;
       if (!blob) blob = await this.create(resource);
       if (epoch !== this.catalog.epoch) { this.states.delete(resource.id); return; }
       if (blob) {
         this.update(resource, 'ready', { url: URL.createObjectURL(blob), generated: resource.coverGenerated });
-        if (!cached) await saveCover(key, blob).catch(() => {});
+        if (!cached) await saveCover(key, blob, { kind: resource.detectedKind || resource.kind, generated: resource.coverGenerated, avatars: resource.avatars }).catch(() => {});
       } else this.update(resource, resource.isWorld ? 'world' : 'empty', { message: resource.isWorld ? '世界不支持预览' : '暂无可展示内容' });
     } catch (error) {
       this.update(resource, error.code === 'PASSWORD_REQUIRED' ? 'locked' : 'error', { message: friendlyError(error) });
