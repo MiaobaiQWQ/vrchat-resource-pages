@@ -12,9 +12,9 @@ export function createResources(files) {
     }
   }
   const assigned = new Set();
-  for (const [key, entries] of folders) {
+  for (const [key, entries] of [...folders].sort(([a], [b]) => a.split('/').length - b.split('/').length)) {
     const models = entries.filter(entry => entry.kind === 'model');
-    if (!models.length) continue;
+    if (!models.length || models.every(entry => assigned.has(entry.id))) continue;
     const first = models[0], directory = dirname(first.path), prefix = directory ? directory + '/' : '';
     const related = files.filter(file => file.sourceId === first.sourceId && file.kind !== 'archive' && (file.path.startsWith(prefix)));
     related.forEach(file => assigned.add(file.id));
@@ -43,7 +43,11 @@ export class Catalog extends EventTarget {
   urls = new Map();
   epoch = 0;
   constructor(sources, archives) { super(); this.sources = sources; this.archives = archives; }
-  rebuild() { this.epoch++; this.resources = createResources(this.sources.files()); this.dispatchEvent(new Event('change')); }
+  rebuild() {
+    this.epoch++; const previous = new Map(this.resources.map(resource => [resource.id, resource]));
+    this.resources = createResources(this.sources.files()).map(resource => { const old = previous.get(resource.id); return old && old.size === resource.size && old.modified === resource.modified ? old : resource; });
+    this.dispatchEvent(new Event('change'));
+  }
   async expand(resource, full = false) {
     const field = full ? 'fullPromise' : 'listPromise';
     if (resource[field]) return resource[field];
@@ -92,7 +96,7 @@ export class Catalog extends EventTarget {
   }
   compatibleModels(resource) {
     if (!resource.avatars.length) return [];
-    return this.resources.filter(other => other.id !== resource.id && (other.kind === 'model' || other.detectedKind === 'model') && other.avatars.some(name => resource.avatars.includes(name)));
+    return this.resources.filter(other => other.id !== resource.id && (other.kind === 'model' || other.detectedKind === 'model' || other.kind === 'archive' && /角色模型|avatars?|(?:^|\/)models?\//i.test(other.path)) && other.avatars.some(name => resource.avatars.includes(name)));
   }
 }
 

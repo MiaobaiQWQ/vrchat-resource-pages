@@ -203,12 +203,17 @@ export class ModelViewer {
     const list = new Map(); this.loaded?.object.traverse(node => { for (const [name, index] of Object.entries(node.morphTargetDictionary || {})) { if (!list.has(name)) list.set(name, []); list.get(name).push({ node, index }); } });
     return [...list].map(([name, targets]) => ({ name, set: value => { targets.forEach(({ node, index }) => { node.morphTargetInfluences[index] = value; }); this.draw(); } }));
   }
-  async texture(entry, images) {
+  materials() {
+    const items = []; this.loaded?.object.traverse(node => { if (node.isMesh) for (const material of Array.isArray(node.material) ? node.material : [node.material]) items.push({ index: items.length, name: `${node.name || '网格'} / ${material.name || '材质'}`, material }); }); return items;
+  }
+  color(value, indices) { for (const item of this.materials()) if (!indices || indices.includes(item.index)) item.material.color.set(value); this.draw(); }
+  async texture(entry, images, indices) {
     const texture = await textureFromEntry(entry, images, null, 'color', false), gltf = this.loaded?.entry && /\.(glb|gltf|vrm)$/i.test(this.loaded.entry.path);
     texture.flipY = !gltf; texture.needsUpdate = true;
-    this.loaded.object.traverse(node => { if (node.isMesh) for (const material of Array.isArray(node.material) ? node.material : [node.material]) { material.map = texture; material.color.setHex(0xffffff); material.needsUpdate = true; } }); this.draw();
+    this.retiredTextures ||= new Set();
+    for (const item of this.materials()) if (!indices || indices.includes(item.index)) { if (item.material.map) this.retiredTextures.add(item.material.map); item.material.map = texture; item.material.color.setHex(0xffffff); item.material.needsUpdate = true; } this.draw();
   }
-  dispose() { this.disposed = true; if (this.pending) cancelAnimationFrame(this.pending); this.observer.disconnect(); this.controls.dispose(); releaseObject(this.loaded?.object); this.grid.geometry.dispose(); this.grid.material.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss(); }
+  dispose() { this.disposed = true; if (this.pending) cancelAnimationFrame(this.pending); this.observer.disconnect(); this.controls.dispose(); releaseObject(this.loaded?.object); this.retiredTextures?.forEach(texture => texture.dispose()); this.grid.geometry.dispose(); this.grid.material.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss(); }
 }
 
 export async function engineImage(file, ext) {
