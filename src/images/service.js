@@ -21,7 +21,7 @@ export class ImageService {
       file = await entry.read();
     if (file.size > 512 * 1024 * 1024)
       throw new Error("图像过大，请先缩小图像后预览");
-    if (ext === ".psd") {
+    if ([".psd", ".psb"].includes(ext)) {
       if (!this.worker) {
         this.worker = new Worker(new URL("./worker.js", import.meta.url), {
           type: "module",
@@ -44,7 +44,7 @@ export class ImageService {
       const { engineImage } = await import("../viewer/engine.js");
       return engineImage(file, ext);
     }
-    if ([".dds", ".exr", ".hdr", ".ktx2"].includes(ext)) {
+    if ([".dds", ".exr", ".hdr", ".ktx2", ".ktx", ".pvr"].includes(ext)) {
       const { renderImageFile } = await import("../viewer/engine.js");
       return renderImageFile(file, ext);
     }
