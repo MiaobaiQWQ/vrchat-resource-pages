@@ -13,13 +13,22 @@ export async function identifyFile(file, name = file.name) {
   if (starts([55, 122, 188, 175, 39, 28]))
     return { kind: "archive", format: ".7z" };
   if (text.startsWith("Rar!")) return { kind: "archive", format: ".rar" };
+  if (starts([66, 90, 104])) return { kind: "archive", format: ".bz2" };
+  if (starts([253, 55, 122, 88, 90, 0]))
+    return { kind: "archive", format: ".xz" };
   if (text.startsWith("Kaydara FBX Binary"))
     return { kind: "model", format: ".fbx" };
   if (text.startsWith("glTF")) return { kind: "model", format: ".glb" };
   if (starts([137, 80, 78, 71, 13, 10, 26, 10]))
     return { kind: "texture", format: ".png" };
   if (starts([255, 216, 255])) return { kind: "texture", format: ".jpg" };
-  if (text.startsWith("8BPS")) return { kind: "texture", format: ".psd" };
+  if (text.startsWith("8BPS"))
+    return { kind: "texture", format: bytes[5] === 2 ? ".psb" : ".psd" };
+  if (starts([171, 75, 84, 88, 32, 49, 49, 187]))
+    return { kind: "texture", format: ".ktx" };
+  if (starts([171, 75, 84, 88, 32, 50, 48, 187]))
+    return { kind: "texture", format: ".ktx2" };
+  if (starts([80, 86, 82, 3])) return { kind: "texture", format: ".pvr" };
   if (text.startsWith("DDS ")) return { kind: "texture", format: ".dds" };
   return fallback;
 }

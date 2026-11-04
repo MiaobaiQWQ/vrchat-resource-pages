@@ -1,7 +1,23 @@
 import { extension, comparisonKey } from "./paths.js";
 
 const groups = {
-  model: ["fbx", "glb", "gltf", "vrm", "obj", "stl", "ply", "dae"],
+  model: [
+    "fbx",
+    "glb",
+    "gltf",
+    "vrm",
+    "obj",
+    "stl",
+    "ply",
+    "dae",
+    "3mf",
+    "3ds",
+    "amf",
+    "vtk",
+    "vtp",
+    "wrl",
+    "vrml",
+  ],
   texture: [
     "png",
     "jpg",
@@ -13,14 +29,30 @@ const groups = {
     "svg",
     "tga",
     "psd",
+    "psb",
     "dds",
     "tif",
     "tiff",
     "exr",
     "hdr",
     "ktx2",
+    "ktx",
+    "pvr",
   ],
-  archive: ["zip", "unitypackage", "tar", "gz", "tgz", "7z", "rar"],
+  archive: [
+    "zip",
+    "unitypackage",
+    "tar",
+    "gz",
+    "tgz",
+    "7z",
+    "rar",
+    "bz2",
+    "tbz",
+    "tbz2",
+    "xz",
+    "txz",
+  ],
   audio: ["mp3", "wav", "ogg", "flac", "aac", "m4a", "opus"],
   video: ["mp4", "webm", "mov", "m4v", "ogv"],
   document: [
@@ -40,6 +72,7 @@ const groups = {
     "cginc",
     "pdf",
     "log",
+    "mtl",
   ],
   unity: [
     "prefab",
@@ -61,8 +94,6 @@ const groups = {
     "pmd",
     "vmd",
     "vrca",
-    "ktx",
-    "psb",
     "spp",
     "sbsar",
   ],
@@ -90,9 +121,11 @@ export const kindNames = {
   other: "其他文件",
 };
 export const renderableImage = (name) =>
-  /\.(?:png|jpe?g|webp|avif|gif|bmp|svg|tga|psd|dds|tiff?|exr|hdr)$/i.test(
+  /\.(?:png|jpe?g|webp|avif|gif|bmp|svg|tga|ps[db]|dds|tiff?|exr|hdr|ktx2?|pvr)$/i.test(
     name,
   );
+export const isLibarchiveFormat = (ext) =>
+  [".rar", ".7z", ".bz2", ".tbz", ".tbz2", ".xz", ".txz"].includes(ext);
 export const isColorTexture = (name) =>
   !/(?:normal|nrm|mask|matcap|rough|metal|occlusion|emission|opacity|alpha|_ao\b|_uv\b)/i.test(
     name,
