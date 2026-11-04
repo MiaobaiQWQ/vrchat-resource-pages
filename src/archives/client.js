@@ -1,5 +1,5 @@
-import { extension, isAuxiliary } from "../core/paths.js";
-import { fileKind } from "../core/formats.js";
+import { extension, isAuxiliary, normalizePath } from "../core/paths.js";
+import { fileKind, isLibarchiveFormat } from "../core/formats.js";
 import { storage } from "../core/storage.js";
 import { assetUrl } from "../core/assets.js";
 
@@ -63,8 +63,7 @@ export class ArchiveClient {
   async children(entry, resourceId) {
     const kind = entry.format || extension(entry.path),
       file = await entry.read();
-    if ([".rar", ".7z"].includes(kind))
-      return this.otherChildren(entry, resourceId);
+    if (isLibarchiveFormat(kind)) return this.otherChildren(entry, resourceId);
     const listing = await this.request({
       operation: "list",
       id: entry.id,
@@ -112,9 +111,11 @@ export class ArchiveClient {
       if (this.otherArchives.has(entry.id))
         return this.otherArchives.get(entry.id);
       if (entry.size > 512 * 1024 * 1024)
-        throw new Error("RAR / 7z 容器超过 512 MB，请先解压到目录");
+        throw new Error("此压缩容器超过 512 MB，请先解压到目录");
       const { Archive } = await import("libarchive.js");
-      Archive.init({ workerUrl: assetUrl("vendor/libarchive/worker-bundle.js") });
+      Archive.init({
+        workerUrl: assetUrl("vendor/libarchive/worker-bundle.js"),
+      });
       const reader = await Archive.open(await entry.read());
       try {
         const password = await this.password(resourceId);
@@ -140,9 +141,7 @@ export class ArchiveClient {
     return record.items.flatMap(({ file, path }) => {
       let normalized;
       try {
-        normalized = (path + file.name).replaceAll("\\", "/");
-        if (normalized.startsWith("/") || normalized.split("/").includes(".."))
-          return [];
+        normalized = normalizePath(path + file.name, { archive: true });
       } catch {
         return [];
       }
