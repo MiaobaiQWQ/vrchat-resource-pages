@@ -27,6 +27,7 @@ import { canvasBlob, loadImage } from "../images/service.js";
 import { randomTextureOptions } from "./texture-options.js";
 import { createMeshMaterial } from "./materials.js";
 import { assetUrl } from "../core/assets.js";
+import { extraModelFormats, loadExtraModel } from "./extra-models.js";
 
 const WHITE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR1kAAAAASUVORK5CYII=";
@@ -138,7 +139,8 @@ export async function loadModel(
       decoded = decodeURIComponent(url);
     } catch {}
     for (const [path, actual] of mappings)
-      if (decoded === path || decoded.endsWith("/" + path)) return actual;
+      if (url === path || decoded === path || decoded.endsWith("/" + path))
+        return actual;
     if (/^(blob:|data:)/.test(url)) return url;
     missing.add(decoded);
     return WHITE;
@@ -149,10 +151,27 @@ export async function loadModel(
   const url = await catalog.url(entry),
     ext = entry.format || extension(entry.path);
   let object, draco, ktx;
+  const dependencyWarnings = [];
   try {
     if (ext === ".fbx") object = await new FBXLoader(manager).loadAsync(url);
-    else if (ext === ".obj")
-      object = await new OBJLoader(manager).loadAsync(url);
+    else if (ext === ".obj") {
+      const text = await file.text();
+      const { prepareObjMaterials } = await import("./obj-materials.js");
+      const materials = await prepareObjMaterials(
+        text,
+        entry,
+        resource.references || resource.entries,
+        catalog,
+        images,
+        mappings,
+        manager,
+        dependencyWarnings,
+      );
+      const loader = new OBJLoader(manager);
+      if (materials) loader.setMaterials(materials);
+      object = loader.parse(text);
+    } else if (extraModelFormats.includes(ext))
+      object = await loadExtraModel(ext, url, manager);
     else if (ext === ".dae")
       object = (await new ColladaLoader(manager).loadAsync(url)).scene;
     else if (ext === ".stl" || ext === ".ply") {
@@ -188,13 +207,14 @@ export async function loadModel(
     }
     progress("正在匹配材质与贴图…");
     const bindings = await buildBindings(resource, entry),
-      warnings = [],
+      warnings = dependencyWarnings,
       pool = new Map(),
       tasks = [],
       originalMaterials = new Set();
     let meshes = 0,
       vertices = 0,
-      triangles = 0;
+      triangles = 0,
+      originalMaps = 0;
     const gltf = [".glb", ".gltf", ".vrm"].includes(ext);
     const getTexture = (target, data, role) => {
       const key = target.id + role + data?.scale + data?.offset;
@@ -225,6 +245,7 @@ export async function loadModel(
         Array.isArray(node.material) ? node.material : [node.material]
       ).map((source, slot) => {
         originalMaterials.add(source);
+        if (source.map) originalMaps++;
         const material = createMeshMaterial(source, node.geometry);
         let data = bindings.resolve(node.name, source.name, slot, used);
         if (!data && !gltf) {
@@ -311,8 +332,11 @@ export async function loadModel(
     });
     originalMaterials.forEach((material) => material.dispose());
     if (!meshes) throw new Error("文件中没有可以展示的网格");
+    for (const path of [...missing].slice(0, 3))
+      warnings.push("未找到模型关联文件：" + path);
     if (
       !tasks.length &&
+      !originalMaps &&
       !gltf &&
       resource.entries.some((e) => e.kind === "texture")
     )
@@ -578,7 +602,29 @@ export async function renderImageFile(file, ext) {
   const url = URL.createObjectURL(file);
   let texture, loader;
   try {
-    loader =
+    if (ext === ".ktx") {
+      const header = new DataView(await file.slice(0, 64).arrayBuffer());
+      if (header.byteLength < 64) throw new Error("KTX 文件头不完整");
+      const little = header.getUint32(12, true) === 0x04030201;
+      if (header.getUint32(16, little) !== 0)
+        throw new Error("此 KTX 使用未压缩像素，请转换为 PNG 或 KTX2 后预览");
+      if (
+        header.getUint32(44, little) ||
+        header.getUint32(48, little) ||
+        header.getUint32(52, little) !== 1
+      )
+        throw new Error("暂不支持 KTX 体积、数组或立方体纹理的二维预览");
+      const { KTXLoader } = await import("three/addons/loaders/KTXLoader.js");
+      loader = new KTXLoader();
+    } else if (ext === ".pvr") {
+      if (!coverRenderer.extensions.has("WEBGL_compressed_texture_pvrtc"))
+        throw new Error(
+          "当前显卡或浏览器不支持 PVR 的 PVRTC 压缩，请转换为 PNG 或 KTX2",
+        );
+      const { PVRLoader } = await import("three/addons/loaders/PVRLoader.js");
+      loader = new PVRLoader();
+    }
+    loader ||=
       ext === ".dds"
         ? new DDSLoader()
         : ext === ".exr"
@@ -589,6 +635,39 @@ export async function renderImageFile(file, ext) {
                 .detectSupport(coverRenderer)
             : new HDRLoader();
     texture = await loader.loadAsync(url);
+    if ([".ktx", ".pvr"].includes(ext)) {
+      for (const name of [
+        "WEBGL_compressed_texture_s3tc",
+        "WEBGL_compressed_texture_s3tc_srgb",
+        "WEBGL_compressed_texture_etc",
+        "WEBGL_compressed_texture_etc1",
+        "WEBGL_compressed_texture_astc",
+        "WEBGL_compressed_texture_bptc",
+        "EXT_texture_compression_bptc",
+        "WEBGL_compressed_texture_pvrtc",
+      ])
+        coverRenderer.extensions.has(name);
+      const gl = coverRenderer.getContext();
+      if (
+        !Array.from(gl.getParameter(gl.COMPRESSED_TEXTURE_FORMATS)).includes(
+          texture.format,
+        )
+      )
+        throw new Error(
+          "当前显卡或浏览器不支持此纹理的压缩编码，请转换为 PNG 或 KTX2",
+        );
+    }
+    if (
+      texture.format === THREE.RGBA_S3TC_DXT1_Format ||
+      texture.format === THREE.RGBA_S3TC_DXT3_Format ||
+      texture.format === THREE.RGBA_S3TC_DXT5_Format ||
+      texture.format === THREE.RGB_S3TC_DXT1_Format
+    ) {
+      if (!coverRenderer.extensions.has("WEBGL_compressed_texture_s3tc"))
+        throw new Error(
+          "当前显卡或浏览器不支持此纹理的 S3TC 压缩，请转换为 PNG 或 KTX2",
+        );
+    }
     texture.colorSpace = [".hdr", ".exr"].includes(ext)
       ? THREE.LinearSRGBColorSpace
       : THREE.SRGBColorSpace;
