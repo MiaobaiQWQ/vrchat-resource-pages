@@ -1,23 +1,83 @@
-import 'fake-indexeddb/auto';
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { Worker as NodeWorker } from 'node:worker_threads';
-import { zipSync, strToU8 } from 'fflate';
-import { ArchiveClient } from '../src/archives/client.js';
+import "fake-indexeddb/auto";
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { Worker as NodeWorker } from "node:worker_threads";
+import { zipSync, strToU8 } from "fflate";
+import { ArchiveClient } from "../src/archives/client.js";
+import { BlobWriter, BlobReader, ZipWriter, configure } from "@zip.js/zip.js";
 
 globalThis.Worker = class {
-  constructor() { this.worker = new NodeWorker(new URL('./helpers/worker.js', import.meta.url)); this.worker.on('message', data => this.onmessage?.({ data })); this.worker.on('error', error => this.onerror?.(error)); }
-  postMessage(data) { this.worker.postMessage(data); }
-  terminate() { return this.worker.terminate(); }
+  constructor() {
+    this.worker = new NodeWorker(
+      new URL("./helpers/worker.js", import.meta.url),
+    );
+    this.worker.on("message", (data) => this.onmessage?.({ data }));
+    this.worker.on("error", (error) => this.onerror?.(error));
+  }
+  postMessage(data) {
+    this.worker.postMessage(data);
+  }
+  terminate() {
+    return this.worker.terminate();
+  }
 };
 
-test('嵌套 ZIP 按需解析，材质读取复用已解出的容器', async () => {
-  const inner = zipSync({ '多层/🐈 renamed.txt': strToU8('correct'), '其他/notes.txt': strToU8('notes') }), outer = zipSync({ '更深/内包.zip': inner });
-  const client = new ArchiveClient(); let reads = 0;
+test("嵌套 ZIP 按需解析，材质读取复用已解出的容器", async () => {
+  const inner = zipSync({
+      "多层/🐈 renamed.txt": strToU8("correct"),
+      "其他/notes.txt": strToU8("notes"),
+    }),
+    outer = zipSync({ "更深/内包.zip": inner });
+  const client = new ArchiveClient();
+  let reads = 0;
   try {
-    const entry = { id: 'source:outer', sourceId: 'source', path: '外包.zip', modified: 1, read: async () => { reads++; return new Blob([outer]); } };
-    const children = await client.children(entry, entry.id); assert.equal(children[0].path, '更深/内包.zip');
-    const nested = await client.children(children[0], entry.id); assert.equal(await (await nested[0].read()).text(), 'correct'); assert.equal(await (await nested[1].read()).text(), 'notes');
-    assert.equal(reads, 1, '不能为每个材质反复解压上层容器');
-  } finally { await client.worker.terminate(); }
+    const entry = {
+      id: "source:outer",
+      sourceId: "source",
+      path: "外包.zip",
+      modified: 1,
+      read: async () => {
+        reads++;
+        return new Blob([outer]);
+      },
+    };
+    const children = await client.children(entry, entry.id);
+    assert.equal(children[0].path, "更深/内包.zip");
+    const nested = await client.children(children[0], entry.id);
+    assert.equal(await (await nested[0].read()).text(), "correct");
+    assert.equal(await (await nested[1].read()).text(), "notes");
+    assert.equal(reads, 1, "不能为每个材质反复解压上层容器");
+  } finally {
+    await client.worker.terminate();
+  }
+});
+test("资源密码相互独立，错误密码后可以重试", async () => {
+  configure({ useWebWorkers: false });
+  const writer = new ZipWriter(new BlobWriter());
+  await writer.add("纹理.txt", new BlobReader(new Blob(["private fixture"])), {
+    password: "测试密码",
+  });
+  const file = await writer.close();
+  const client = new ArchiveClient();
+  try {
+    const entry = {
+      id: "source:encrypted",
+      sourceId: "source",
+      path: "encrypted.zip",
+      read: async () => file,
+    };
+    const children = await client.children(entry, entry.id);
+    await assert.rejects(() => children[0].read(), {
+      code: "PASSWORD_REQUIRED",
+    });
+    await client.setPassword(entry.id, "wrong", false);
+    await assert.rejects(() => children[0].read(), {
+      code: "PASSWORD_REQUIRED",
+    });
+    await client.setPassword(entry.id, "测试密码", false);
+    assert.equal(await (await children[0].read()).text(), "private fixture");
+    assert.equal(await client.password("source:another"), "");
+  } finally {
+    await client.worker.terminate();
+  }
 });
