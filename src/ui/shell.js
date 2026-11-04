@@ -9,6 +9,7 @@ import {
 } from "./elements.js";
 import { kindNames } from "../core/formats.js";
 import { friendlyError } from "../core/async.js";
+import { readDrop } from "../library/drop.js";
 const matchesKind = (resource, kind) =>
   kind === "all" ||
   (kind === "archive" && resource.kind === "archive") ||
@@ -205,47 +206,47 @@ export class Shell {
     this.drop = el("div", "drop-overlay");
     this.drop.append(
       icon("folder", 56),
-      el("h2", "", "把资源放到这里"),
-      el("p", "", "文件夹、模型、贴图或压缩包，都会留在本机"),
+      el("h2", "", "松开就添加"),
+      el(
+        "p",
+        "",
+        "文件夹、模型、贴图或压缩包，整个页面都可以拖进来",
+      ),
     );
     let depth = 0;
+    const hideDrop = () => {
+      depth = 0;
+      this.drop.classList.remove("visible");
+    };
     window.addEventListener("dragenter", (event) => {
-      if (event.dataTransfer.types.includes("Files")) {
-        event.preventDefault();
-        depth++;
-        this.drop.classList.add("visible");
-      }
+      if (!event.dataTransfer?.types.includes("Files")) return;
+      event.preventDefault();
+      depth++;
+      this.drop.classList.add("visible");
     });
-    window.addEventListener("dragleave", () => {
-      depth--;
-      if (depth <= 0) {
-        depth = 0;
-        this.drop.classList.remove("visible");
-      }
+    window.addEventListener("dragleave", (event) => {
+      // 拖到窗口外时 relatedTarget 为空，直接收起；窗口内元素之间切换只减计数
+      if (event.relatedTarget === null) return hideDrop();
+      depth = Math.max(0, depth - 1);
+      if (!depth) this.drop.classList.remove("visible");
     });
     window.addEventListener("dragover", (event) => {
-      if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+      if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
     });
     window.addEventListener("drop", async (event) => {
       event.preventDefault();
-      depth = 0;
-      this.drop.classList.remove("visible");
-      const files = [...event.dataTransfer.files];
-      const promises = [...event.dataTransfer.items]
-        .filter((item) => item.kind === "file")
-        .map((item) =>
-          item.getAsFileSystemHandle
-            ? item.getAsFileSystemHandle()
-            : Promise.resolve(null),
-        );
+      hideDrop();
       try {
-        const handles = await Promise.all(promises);
-        const plain = [];
-        for (let i = 0; i < handles.length; i++)
-          if (handles[i]?.kind === "directory")
-            await app.sources.addDirectory(handles[i]);
-          else if (files[i]) plain.push(files[i]);
-        if (plain.length) await app.sources.addFiles(plain);
+        const { directories, files, folders } = await readDrop(
+          event.dataTransfer,
+        );
+        for (const handle of directories)
+          await this.app.sources.addDirectory(handle);
+        for (const folder of folders)
+          await this.app.sources.addFiles(folder.files, { folder: true });
+        if (files.length) await this.app.sources.addFiles(files);
+        if (!directories.length && !folders.length && !files.length)
+          toast("没有识别到可添加的文件或文件夹");
       } catch (error) {
         toast(friendlyError(error));
       }

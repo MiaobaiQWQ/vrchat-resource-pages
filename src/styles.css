@@ -809,9 +809,10 @@ h1 {
   display: none;
   position: fixed;
   z-index: 200;
-  inset: 13px;
+  /* 整个视口都是拖放区：inset 归零，四周不再留 13px 空隙 */
+  inset: 0;
   border: 2px dashed var(--accent);
-  border-radius: 18px;
+  border-radius: 0;
   background: #f1faf5f5;
   color: #237a69;
   flex-direction: column;
