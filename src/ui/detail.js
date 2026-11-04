@@ -36,28 +36,33 @@ export class Detail {
     const header = el('header', 'detail-header'); this.back = button('返回资源库', 'back', () => this.close(), 'text-button');
     const title = el('div', 'detail-title'); title.append(el('h2', '', resource.name), el('span', '', this.app.sources.sources.get(resource.sourceId)?.name || '本地来源'));
     header.append(this.back, title, iconButton('关闭预览', 'close', () => this.close()));
-    const layout = el('div', 'detail-layout'), main = el('div', 'detail-main'); this.previewToolbar = el('div', 'preview-toolbar');
+    const layout = el('div', 'detail-layout'); this.summary = el('aside', 'detail-summary'); const main = el('div', 'detail-main'); this.previewToolbar = el('div', 'preview-toolbar');
     this.modelSelect = el('select'); this.modelSelect.setAttribute('aria-label', '选择包内模型'); this.modelSelect.onchange = () => { const entry = resource.entries.find(entry => entry.id === this.modelSelect.value); if (entry) this.preview(entry); };
     this.fit = iconButton('重新取景', 'fit', () => this.viewer?.fit()); this.grid = iconButton('显示或隐藏网格', 'grid', () => this.viewer?.toggleGrid());
     this.previewToolbar.append(el('span', 'preview-label', '资源预览'), this.modelSelect, this.fit, this.grid);
     this.stage = el('div', 'preview-stage'); this.stage.setAttribute('aria-live', 'polite'); this.stats = el('div', 'preview-stats');
     const tabs = el('nav', 'detail-tabs');
     this.tabs = {};
-    for (const [name, label] of [['preview', '预览'], ['files', '文件清单'], ['textures', '贴图'], ['expressions', '表情与动画']]) { const node = button(label, null, () => this.selectTab(name), 'detail-tab' + (name === 'preview' ? ' active' : '')); this.tabs[name] = node; tabs.append(node); }
-    this.panes = { preview: el('div', 'preview-pane'), files: el('div', 'files-pane'), textures: el('div', 'textures-pane'), expressions: el('div', 'expressions-pane') };
+    for (const [name, label] of [['files', '文件'], ['textures', '贴图'], ['preview', '3D 预览'], ['unity', 'Unity 资源'], ['expressions', '表情与动画']]) { const node = button(label, null, () => this.selectTab(name), 'detail-tab' + (name === 'preview' ? ' active' : '')); this.tabs[name] = node; tabs.append(node); }
+    this.panes = { preview: el('div', 'preview-pane'), files: el('div', 'files-pane'), textures: el('div', 'textures-pane'), unity: el('div', 'unity-pane'), expressions: el('div', 'expressions-pane') };
     this.panes.preview.append(this.previewToolbar, this.stage, this.stats);
     for (const [name, pane] of Object.entries(this.panes)) pane.hidden = name !== 'preview';
     main.append(tabs, ...Object.values(this.panes));
-    this.inspector = el('aside', 'inspector'); layout.append(main, this.inspector); this.root.replaceChildren(header, layout);
+    this.inspector = el('aside', 'inspector'); layout.append(this.summary, main, this.inspector); this.root.replaceChildren(header, layout);
   }
-  selectTab(name) { this.tab = name; for (const [key, pane] of Object.entries(this.panes)) { pane.hidden = key !== name; this.tabs[key].classList.toggle('active', key === name); } if (name === 'textures') this.renderTextures(); if (name === 'expressions') this.renderExpressions(); this.viewer?.draw(); }
+  selectTab(name) { this.tab = name; for (const [key, pane] of Object.entries(this.panes)) { pane.hidden = key !== name; this.tabs[key].classList.toggle('active', key === name); } if (name === 'textures') this.renderTextures(); if (name === 'expressions') this.renderExpressions(); if (name === 'unity') this.renderUnity(); this.viewer?.draw(); }
   setBusy(text) { const busy = el('div', 'preview-message'); busy.append(el('span', 'spinner'), el('p', '', text)); this.stage.replaceChildren(busy); }
   message(title, text, symbol = 'info') { const node = el('div', 'preview-message'); node.append(icon(symbol, 42), el('h3', '', title), el('p', '', text)); this.stage.replaceChildren(node); }
   fillModelSelect() {
     const models = this.resource.entries.filter(entry => entry.kind === 'model'); this.modelSelect.replaceChildren(...models.map(entry => new Option(entry.path, entry.id))); this.modelSelect.hidden = !models.length;
   }
   renderInfo() {
-    const resource = this.resource; this.inspector.replaceChildren();
+    const resource = this.resource; this.inspector.replaceChildren(); this.summary.replaceChildren();
+    const cover = el('div', 'detail-cover'), cached = this.app.covers.states.get(resource.id);
+    if (cached?.url) { const image = el('img'); image.src = cached.url; image.alt = resource.name; cover.append(image); }
+    else cover.append(icon(kindIcon(resource.detectedKind || resource.kind), 48), el('span', '', resource.isWorld ? '世界不支持预览' : '暂无展示'));
+    const counts = el('div', 'detail-counts');
+    for (const [number, label] of [[resource.entries.filter(entry => entry.kind === 'model').length, '模型文件'], [resource.entries.filter(entry => entry.kind === 'texture').length, '贴图文件'], [resource.entries.length, '条目总数'], [sizeLabel(resource.size), '体积']]) { const item = el('div'); item.append(el('strong', '', String(number)), el('span', '', label)); counts.append(item); }
     const heading = el('div', 'inspector-heading'); heading.append(icon(kindIcon(resource.detectedKind || resource.kind)), el('h3', '', '资源信息'));
     const info = el('dl', 'resource-facts'); for (const [label, value] of [['资源类型', resource.isWorld ? '世界' : kindNames[resource.detectedKind || resource.kind]], ['文件大小', sizeLabel(resource.size)], ['关联文件', `${resource.entries.length.toLocaleString()} 个`], ['适用模型', resource.avatars.join(' / ') || '未标注'], ['来源路径', resource.path || '本地根目录']]) { info.append(el('dt', '', label), el('dd', '', value)); }
     const passwordSection = el('section', 'inspector-section'); passwordSection.append(el('h3', '', '此资源的解压密码'), el('p', 'muted', '仅用于此资源及其嵌套压缩包。'));
@@ -71,8 +76,9 @@ export class Detail {
     }); passwordRow.append(this.password, apply); passwordSection.append(passwordRow, remember);
     this.materialSection = el('section', 'inspector-section'); this.materialSection.hidden = true;
     this.warnings = el('div', 'resource-warnings');
-    this.inspector.append(heading, info, passwordSection, this.materialSection, this.warnings);
-    const local = el('p', 'inspector-local'); local.append(icon('shield', 15), document.createTextNode('仅本地读取 · 文件不会上传')); this.inspector.append(local);
+    this.summary.append(cover, counts, heading, info, passwordSection);
+    this.inspector.append(el('div', 'inspector-heading', '贴图与配色'), this.materialSection, this.warnings, el('p', 'muted', '选择模型后，可调整对应材质的贴图与颜色。'));
+    const local = el('p', 'inspector-local'); local.append(icon('shield', 15), document.createTextNode('仅本地读取 · 文件不会上传')); this.summary.append(local);
   }
   renderWarnings() {
     if (!this.warnings) return; const warnings = [...new Set([...(this.resource.warnings || []), ...(this.loadedWarnings || [])])]; this.warnings.replaceChildren();
@@ -181,6 +187,15 @@ export class Detail {
     const observer = new IntersectionObserver(events => { for (const event of events) if (event.isIntersecting) { observer.unobserve(event.target); const { entry, image, note } = event.target; this.app.images.url(entry).then(url => { image.src = url; note.textContent = ''; }).catch(error => { note.textContent = friendlyError(error); }); } }, { root: pane, rootMargin: '120px' });
     for (const entry of entries) { const card = button('', null, () => { this.imageOnly = true; this.preview(entry); }, 'texture-card'), image = el('img'), note = el('span', 'muted', '读取后预览'); image.alt = entry.name; image.loading = 'lazy'; card.append(image, el('strong', '', entry.name), note); card.entry = entry; card.image = image; card.note = note; pane.append(card); observer.observe(card); }
     this.textureObserver?.disconnect(); this.textureObserver = observer;
+  }
+  renderUnity() {
+    const pane = this.panes.unity; pane.replaceChildren(el('h3', '', 'Unity 资源'));
+    const entries = this.resource.entries.filter(entry => entry.kind === 'unity' || /\.(unitypackage|shader|cginc)$/i.test(entry.path));
+    pane.append(el('p', 'muted', '查看材质、预制体、动画与控制器的原始配置。包内脚本与插件不会执行。'));
+    for (const entry of entries) if (extension(entry.path) !== '.meta') {
+      const row = button('', 'spark', () => extension(entry.path) === '.unitypackage' ? this.download(entry) : this.preview(entry), 'file-row'); row.append(el('span', 'file-name', entry.path), el('span', 'file-size', sizeLabel(entry.size))); pane.append(row);
+    }
+    if (!entries.length) pane.append(el('p', 'pane-empty', '此资源中没有 Unity 材质、预制体或动画文件。'));
   }
   renderExpressions() {
     const pane = this.panes.expressions; pane.replaceChildren(); const expressions = this.viewer?.expressions() || [], anims = this.resource.entries.filter(entry => /\.(anim|controller|overridecontroller|mask)$/i.test(entry.path));
