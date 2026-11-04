@@ -8,7 +8,7 @@ import { Shell } from './ui/shell.js';
 import { Detail } from './ui/detail.js';
 import { toast } from './ui/elements.js';
 
-try { document.documentElement.dataset.theme = localStorage.getItem('shijian-theme') || 'light'; } catch {}
+document.documentElement.dataset.theme = 'dark';
 const sources = new SourceManager(), archives = new ArchiveClient(), catalog = new Catalog(sources, archives), images = new ImageService(), covers = new CoverQueue(catalog, images);
 const app = { sources, archives, catalog, images, covers };
 app.shell = new Shell(app); app.detail = new Detail(app);

@@ -2,26 +2,35 @@ import { basename, dirname, stem, extension, comparisonKey } from '../core/paths
 import { detectAvatars } from '../core/formats.js';
 
 export function createResources(files) {
-  const resources = [], folders = new Map();
+  const resources = [], folders = new Map(), assigned = new Set();
   for (const file of files) {
-    if (file.kind === 'archive') {
-      resources.push({ id: file.id, sourceId: file.sourceId, name: stem(file.name), path: file.path, kind: 'archive', size: file.size, modified: file.modified, entries: [file], archives: [file], avatars: detectAvatars(file.path), warnings: [] });
-    } else {
-      const key = file.sourceId + ':' + dirname(file.path);
-      if (!folders.has(key)) folders.set(key, []); folders.get(key).push(file);
-    }
+    const key = file.sourceId + ':' + dirname(file.path);
+    if (!folders.has(key)) folders.set(key, []); folders.get(key).push(file);
   }
-  const assigned = new Set();
+  const anchors = [...folders].filter(([, entries]) => entries.some(entry => entry.kind === 'archive'));
+  for (const [key, entries] of anchors) {
+    const first = entries[0], directory = dirname(first.path), archives = entries.filter(entry => entry.kind === 'archive');
+    const group = directory || ['directory', 'folder-files'].includes(first.sourceKind) || archives.length === 1 && entries.some(entry => entry.kind === 'texture');
+    if (!group) {
+      for (const archive of archives) { assigned.add(archive.id); resources.push({ id: archive.id, sourceId: archive.sourceId, name: stem(archive.name), path: archive.path, kind: 'archive', size: archive.size, modified: archive.modified, entries: [archive], archives: [archive], avatars: detectAvatars(archive.path), warnings: [] }); }
+      continue;
+    }
+    const prefix = directory ? directory + '/' : '';
+    const nestedAnchors = anchors.filter(([other, group]) => other !== key && group[0].sourceId === first.sourceId && dirname(group[0].path).startsWith(prefix)).map(([, group]) => dirname(group[0].path) + '/');
+    const related = files.filter(entry => entry.sourceId === first.sourceId && entry.path.startsWith(prefix) && !nestedAnchors.some(path => entry.path.startsWith(path)));
+    related.forEach(entry => assigned.add(entry.id));
+    resources.push({ id: key + ':bundle', sourceId: first.sourceId, name: directory ? basename(directory) : first.sourceKind === 'files' ? stem(archives[0].name) : first.sourceName || stem(archives[0].name), path: directory || first.sourceName || archives[0].path, kind: 'archive', size: related.reduce((n, entry) => n + entry.size, 0), modified: Math.max(...related.map(entry => entry.modified || 0)), entries: related, archives, avatars: detectAvatars(related.map(entry => entry.path).join(' ')), warnings: [] });
+  }
   for (const [key, entries] of [...folders].sort(([a], [b]) => a.split('/').length - b.split('/').length)) {
-    const models = entries.filter(entry => entry.kind === 'model');
+    const models = entries.filter(entry => entry.kind === 'model' && !assigned.has(entry.id));
     if (!models.length || models.every(entry => assigned.has(entry.id))) continue;
     const first = models[0], directory = dirname(first.path), prefix = directory ? directory + '/' : '';
-    const related = files.filter(file => file.sourceId === first.sourceId && file.kind !== 'archive' && (file.path.startsWith(prefix)));
+    const related = files.filter(file => file.sourceId === first.sourceId && file.kind !== 'archive' && !assigned.has(file.id) && file.path.startsWith(prefix));
     related.forEach(file => assigned.add(file.id));
     resources.push({ id: key + ':model', sourceId: first.sourceId, name: directory ? basename(directory) : stem(first.name), path: directory || first.path, kind: 'model', size: related.reduce((n, e) => n + e.size, 0), modified: Math.max(...models.map(m => m.modified)), entries: related, avatars: detectAvatars(directory + ' ' + models.map(m => m.name).join(' ')), warnings: [] });
   }
   for (const [key, entries] of folders) {
-    const remaining = entries.filter(entry => !assigned.has(entry.id));
+    const remaining = entries.filter(entry => !assigned.has(entry.id) && entry.kind !== 'archive');
     const textures = remaining.filter(entry => entry.kind === 'texture');
     if (textures.length) {
       const first = textures[0], directory = dirname(first.path);
@@ -35,7 +44,15 @@ export function createResources(files) {
       const file = unity[0]; resources.push({ id: key + ':unity', sourceId: file.sourceId, name: dirname(file.path) ? basename(dirname(file.path)) : stem(file.name), path: dirname(file.path), kind: 'unity', size: unity.reduce((n, e) => n + e.size, 0), modified: file.modified, entries: remaining, avatars: detectAvatars(file.path), warnings: [] });
     }
   }
-  return resources;
+  return resources.map(resource => {
+    const source = files.find(file => file.sourceId === resource.sourceId);
+    const parts = ((source?.sourceName || '') + '/' + resource.path).split('/');
+    const aliases = { 角色模型: '角色模型', avatars: '角色模型', 衣服: '衣服', 服装: '衣服', 泳装: '衣服', 泳衣: '衣服', outfits: '衣服', clothing: '衣服', clothes: '衣服', 头发与发型: '头发与发型', hair: '头发与发型', 头发贴图: '头发贴图', 配饰: '配饰', accessories: '配饰', 材质与贴图: '材质与贴图', textures: '材质与贴图', 动作与表情: '动作与表情', animations: '动作与表情', expressions: '动作与表情', 功能道具: '功能道具', props: '功能道具', 世界: '世界', worlds: '世界', 混合资源: '混合资源' };
+    const index = parts.findIndex(part => aliases[comparisonKey(part)]);
+    resource.category = index >= 0 ? aliases[comparisonKey(parts[index])] : '本地资源';
+    resource.subcategory = index >= 0 ? parts[index] !== resource.category ? parts[index] : index + 1 < parts.length - 1 ? parts[index + 1] : '' : '';
+    return resource;
+  });
 }
 
 export class Catalog extends EventTarget {
@@ -54,7 +71,7 @@ export class Catalog extends EventTarget {
     if (resource[field]) return resource[field];
     resource[field] = (async () => {
       if (full) await this.expand(resource, false);
-      const visited = resource.visited ||= new Set();
+    const visited = resource.visited ||= new Set();
       const walk = async (entry, depth) => {
         if (depth > 6) { resource.warnings.push('嵌套超过 6 层，请先解压此资源'); return; }
         if (visited.has(entry.id)) return;
@@ -62,16 +79,17 @@ export class Catalog extends EventTarget {
         try {
           const children = await this.archives.children(entry, resource.id); visited.add(entry.id);
           for (const child of children) {
+            child.depth = depth + 1;
             if (!resource.entries.some(e => e.id === child.id)) resource.entries.push(child);
             if (child.kind === 'archive') await walk(child, depth + 1);
           }
         } catch (error) { resource.warnings.push(`${entry.name}：${error.message}`); if (error.code === 'PASSWORD_REQUIRED') { resource.locked = true; throw error; } }
       };
-      for (const entry of [...resource.entries].filter(e => e.kind === 'archive')) await walk(entry, 0);
+      for (const entry of [...resource.entries].filter(e => e.kind === 'archive')) await walk(entry, entry.depth || 0);
       resource.models = resource.entries.filter(e => e.kind === 'model'); resource.textures = resource.entries.filter(e => e.kind === 'texture');
       resource.references = [...new Map([...this.sources.files().filter(entry => entry.sourceId === resource.sourceId), ...resource.entries].map(entry => [entry.id, entry])).values()];
       if (resource.models.length) resource.detectedKind = 'model'; else if (resource.textures.length) resource.detectedKind = 'texture';
-      resource.isWorld = resource.entries.some(e => e.kind === 'world') && !resource.models.length;
+      resource.isWorld = resource.category === '世界' || resource.entries.some(e => e.kind === 'world') && !resource.models.length;
       if (!resource.avatars.length) resource.avatars = detectAvatars(resource.entries.map(entry => entry.path).join(' '));
       if (!resource.avatars.length) for (const entry of resource.entries.filter(e => /(?:readme|说明|対応|about)/i.test(e.name) && e.size < 100000).slice(0, 5)) {
         try { resource.avatars.push(...detectAvatars(await (await entry.read()).slice(0, 32000).text())); } catch {}

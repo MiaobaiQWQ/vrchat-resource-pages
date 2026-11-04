@@ -25,8 +25,8 @@ export class Detail {
       await this.app.catalog.expand(resource, true); if (token !== this.token) return;
       this.renderFiles(); this.fillModelSelect(); this.renderInfo();
       const model = this.app.catalog.chooseModel(resource), texture = resource.entries.find(entry => entry.kind === 'texture');
-      if (resource.isWorld) this.message('世界资源暂不支持预览', '可以查看包内文件与资源说明。', 'cube');
-      else if (model) await this.preview(model);
+      if (resource.isWorld) { this.loadButton.disabled = true; this.message('世界资源暂不支持预览', '可以查看包内文件与资源说明。', 'cube'); }
+      else if (model) { this.modelSelect.value = model.id; this.message('模型已识别，等待手动载入', '在上方选择模型，然后点击“载入模型”。', 'cube'); }
       else if (texture) await this.preview(texture);
       else await this.preview(resource.entries.find(entry => !['archive', 'other'].includes(entry.kind)) || resource.entries[0]);
       if (token === this.token) this.renderWarnings();
@@ -38,8 +38,10 @@ export class Detail {
     header.append(this.back, title, iconButton('关闭预览', 'close', () => this.close()));
     const layout = el('div', 'detail-layout'); this.summary = el('aside', 'detail-summary'); const main = el('div', 'detail-main'); this.previewToolbar = el('div', 'preview-toolbar');
     this.modelSelect = el('select'); this.modelSelect.setAttribute('aria-label', '选择包内模型'); this.modelSelect.onchange = () => { const entry = resource.entries.find(entry => entry.id === this.modelSelect.value); if (entry) this.preview(entry); };
+    this.modelSelect.onchange = () => { this.loadButton.disabled = !this.modelSelect.value; };
+    this.loadButton = button('载入模型', null, () => { const entry = resource.entries.find(entry => entry.id === this.modelSelect.value); if (entry) this.preview(entry); }); this.loadButton.disabled = true;
     this.fit = iconButton('重新取景', 'fit', () => this.viewer?.fit()); this.grid = iconButton('显示或隐藏网格', 'grid', () => this.viewer?.toggleGrid());
-    this.previewToolbar.append(el('span', 'preview-label', '资源预览'), this.modelSelect, this.fit, this.grid);
+    this.previewToolbar.append(this.modelSelect, this.loadButton, el('span', 'preview-label', '手动载入模型'), this.fit, this.grid);
     this.stage = el('div', 'preview-stage'); this.stage.setAttribute('aria-live', 'polite'); this.stats = el('div', 'preview-stats');
     const tabs = el('nav', 'detail-tabs');
     this.tabs = {};
@@ -54,7 +56,8 @@ export class Detail {
   setBusy(text) { const busy = el('div', 'preview-message'); busy.append(el('span', 'spinner'), el('p', '', text)); this.stage.replaceChildren(busy); }
   message(title, text, symbol = 'info') { const node = el('div', 'preview-message'); node.append(icon(symbol, 42), el('h3', '', title), el('p', '', text)); this.stage.replaceChildren(node); }
   fillModelSelect() {
-    const models = this.resource.entries.filter(entry => entry.kind === 'model'); this.modelSelect.replaceChildren(...models.map(entry => new Option(entry.path, entry.id))); this.modelSelect.hidden = !models.length;
+    const models = this.resource.entries.filter(entry => entry.kind === 'model'); this.modelSelect.replaceChildren(...models.map(entry => new Option(entry.path, entry.id))); this.modelSelect.hidden = false; if (!models.length) this.modelSelect.append(new Option('没有可预览的模型', ''));
+    this.loadButton.disabled = !models.length;
   }
   renderInfo() {
     const resource = this.resource; this.inspector.replaceChildren(); this.summary.replaceChildren();
@@ -88,8 +91,10 @@ export class Detail {
   async preview(entry) {
     if (!entry) { this.message('没有可预览的内容', '可以在文件清单中查看资源，或添加解压后的目录。'); return; }
     const resource = this.resource, token = ++this.token; this.entry = entry; this.viewer?.dispose(); this.viewer = null; this.loadedWarnings = []; this.selectTab('preview'); this.setBusy('正在准备预览…'); this.stats.textContent = entry.path; this.materialSection.hidden = true;
+    this.tabs.preview.textContent = entry.kind === 'texture' ? '贴图预览' : entry.kind === 'model' ? '3D 预览' : '文件预览';
     try {
-      if (entry.kind === 'model') await this.showModel(resource, entry, token);
+      if (entry.kind === 'model' && !resource.isWorld) await this.showModel(resource, entry, token);
+      else if (entry.kind === 'model') this.message('世界资源暂不支持预览', '请在 Unity 中打开此资源。', 'cube');
       else if (entry.kind === 'texture') await this.showImage(entry, token);
       else if (entry.kind === 'audio' || entry.kind === 'video') {
         const url = await this.app.catalog.url(entry); if (token !== this.token) return;
@@ -154,7 +159,6 @@ export class Detail {
         catch (error) { if (current === this.token) this.message('对应模型无法加载', friendlyError(error)); }
       };
       hint.append(choose, button('预览模型效果', 'cube', load, 'text-button'), button('查看原贴图', 'image', () => { this.imageOnly = true; this.preview(entry); }, 'text-button'));
-      if (models.length === 1 && !this.imageOnly) { this.stage.append(hint); await load(); return; }
     }
     this.stage.append(hint);
   }

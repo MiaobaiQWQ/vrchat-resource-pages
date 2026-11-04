@@ -30,7 +30,7 @@ export class CoverQueue extends EventTarget {
     const epoch = this.catalog.epoch;
     try {
       this.update(resource, 'loading');
-      const key = resource.id + ':' + resource.size + ':' + resource.modified + ':v1';
+      const key = resource.id + ':' + resource.size + ':' + resource.modified + ':manual-v2';
       const cached = await storage('covers', 'get', key).catch(() => null);
       if (cached) { resource.detectedKind = cached.kind; resource.coverGenerated = cached.generated; resource.avatars = cached.avatars || resource.avatars; }
       let blob = cached?.blob;
@@ -50,15 +50,6 @@ export class CoverQueue extends EventTarget {
     const cover = textures.find(entry => /(?:^|[\s/_-])(?:cover|preview|thumbnail|main|base_resized)(?:[\s_.-]|$)/i.test(entry.path));
     if (cover) return this.images.thumbnail(cover);
     if (resource.kind === 'texture' && textures.length) return this.images.thumbnail(textures[0]);
-    await this.catalog.expand(resource, true);
-    if (resource.isWorld) return null;
-    const model = this.catalog.chooseModel(resource);
-    if (model) {
-      const engine = await import('../viewer/engine.js');
-      const loaded = await engine.loadModel(resource, model, this.catalog, this.images, { thumbnail: true });
-      try { resource.coverGenerated = true; return await engine.modelCover(loaded); }
-      finally { engine.releaseObject(loaded.object); }
-    }
     const first = resource.entries.find(entry => entry.kind === 'texture');
     return first ? this.images.thumbnail(first) : null;
   }

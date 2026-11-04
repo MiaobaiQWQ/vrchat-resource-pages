@@ -2,12 +2,14 @@ import { element as el, button, icon, iconButton, sizeLabel, kindIcon, toast } f
 import { kindNames } from '../core/formats.js';
 import { friendlyError } from '../core/async.js';
 const matchesKind = (resource, kind) => kind === 'all' || kind === 'archive' && resource.kind === 'archive' || (resource.detectedKind || resource.kind) === kind;
+const matchesCategory = (resource, category) => category === 'all' || resource.category === category;
 
 export class Shell {
   filter = 'all';
   sourceId = '';
   query = '';
   sort = 'name';
+  type = 'all';
   limit = 48;
   cards = new Map();
   constructor(app) {
@@ -20,13 +22,13 @@ export class Shell {
   }
   build() {
     this.sidebar = el('aside', 'sidebar');
-    const brand = el('a', 'brand'); brand.href = '#'; brand.addEventListener('click', event => { event.preventDefault(); this.select('all'); }); brand.append(el('span', 'brand-mark'), el('span', 'brand-copy', '拾间')); brand.firstChild.append(icon('cube', 25)); brand.append(el('span', 'brand-tag', 'LOCAL'));
+    const brand = el('a', 'brand'); brand.href = '#'; brand.addEventListener('click', event => { event.preventDefault(); this.select('all'); }); brand.append(el('span', 'brand-mark'), el('span', 'brand-copy', 'VRChat 资源库')); brand.firstChild.append(icon('cube', 25));
     this.nav = el('nav', 'navigation'); this.nav.setAttribute('aria-label', '资源分类');
     this.sourceList = el('div', 'source-list');
     const sourcesTitle = el('div', 'sidebar-heading'); sourcesTitle.append(el('span', '', '本地来源'), iconButton('添加文件夹', 'plus', () => this.pickDirectory()));
     const privacy = el('div', 'privacy-card'); privacy.append(icon('shield', 19)); const privacyCopy = el('div'); privacyCopy.append(el('strong', '', '只属于你的资源库'), el('p', '', '文件留在本机，不会上传或与他人共享。')); privacy.append(privacyCopy);
-    const sidebarFooter = el('div', 'sidebar-footer'); sidebarFooter.append(button('使用与兼容性', 'info', () => this.help(), 'text-button'), el('span', '', '拾间 v1.0 · 本地优先'));
-    this.sidebar.append(brand, el('div', 'sidebar-heading', '资源空间'), this.nav, sourcesTitle, this.sourceList, button('添加本地目录', 'plus', () => this.pickDirectory(), 'add-source'), privacy, sidebarFooter);
+    const sidebarFooter = el('div', 'sidebar-footer'); sidebarFooter.append(button('使用与兼容性', 'info', () => this.help(), 'text-button'), el('span', '', 'VRChat 资源库 · 本地优先'));
+    this.sidebar.append(brand, el('div', 'sidebar-heading', '资源项目'), this.nav, sourcesTitle, this.sourceList, button('添加本地目录', 'plus', () => this.pickDirectory(), 'add-source'), privacy, sidebarFooter);
     const content = el('div', 'workspace'), topbar = el('header', 'topbar');
     const menu = iconButton('展开资源导航', 'list', () => this.sidebar.classList.toggle('open'), 'icon-button mobile-menu');
     const searchBox = el('label', 'search-box'); searchBox.append(icon('search', 18)); this.search = el('input'); this.search.type = 'search'; this.search.placeholder = '搜索资源、模型名称或路径'; this.search.setAttribute('aria-label', '搜索资源');
@@ -34,7 +36,8 @@ export class Shell {
     const add = el('details', 'add-menu'), summary = el('summary', 'button primary'); summary.append(icon('plus'), el('span', '', '添加资源'), icon('down', 14));
     const addOptions = el('div', 'menu-panel'); addOptions.append(button('添加文件夹', 'folder', () => { add.open = false; this.pickDirectory(); }, 'menu-item'), button('添加文件或压缩包', 'file', () => { add.open = false; this.fileInput.click(); }, 'menu-item')); add.append(summary, addOptions);
     const privateLabel = el('span', 'private-label'); privateLabel.append(icon('lock', 14), document.createTextNode('本机私有'));
-    topbar.append(menu, searchBox, privateLabel, add, iconButton('切换明暗主题', 'moon', () => { const dark = document.documentElement.dataset.theme !== 'dark'; document.documentElement.dataset.theme = dark ? 'dark' : 'light'; localStorage.setItem('shijian-theme', dark ? 'dark' : 'light'); }));
+    const refresh = iconButton('刷新已添加的目录', 'refresh', async () => { const sources = [...this.app.sources.sources.values()].filter(source => source.handle && source.status === 'granted'); if (!sources.length) { toast('请在本地来源中重新选择文件，或先恢复目录访问'); return; } for (const source of sources) await this.app.sources.scan(source.id); });
+    topbar.append(menu, searchBox, privateLabel, button('添加目录', 'folder', () => this.pickDirectory()), refresh, add);
     this.main = el('main', 'main'); content.append(topbar, this.main);
     this.fileInput = el('input', 'sr-only'); this.fileInput.type = 'file'; this.fileInput.multiple = true; this.fileInput.setAttribute('aria-label', '选择本地资源文件'); this.fileInput.onchange = () => { const files = [...this.fileInput.files], sourceId = this.reselectId; this.reselectId = null; this.fileInput.value = ''; this.app.sources.addFiles(files, { sourceId }).catch(error => toast(friendlyError(error))); };
     this.folderInput = el('input', 'sr-only'); this.folderInput.type = 'file'; this.folderInput.multiple = true; this.folderInput.webkitdirectory = true; this.folderInput.setAttribute('aria-label', '选择兼容模式文件夹'); this.folderInput.onchange = () => { const files = [...this.folderInput.files], sourceId = this.reselectId; this.reselectId = null; this.folderInput.value = ''; this.app.sources.addFiles(files, { folder: true, sourceId }).catch(error => toast(friendlyError(error))); };
@@ -76,22 +79,23 @@ export class Shell {
   render() {
     this.app.covers.reset(); this.cards.clear();
     const all = this.app.catalog.resources, query = this.query.normalize('NFKC').toLowerCase().trim();
-    const kinds = ['all', 'model', 'texture', 'archive', 'unity', 'audio', 'video', 'document', 'other'];
+    const kinds = ['all', ...new Set(all.map(resource => resource.category))];
     this.nav.replaceChildren(...kinds.map(kind => {
-      const count = all.filter(resource => matchesKind(resource, kind)).length;
-      const node = button(kindNames[kind], kind === 'all' ? 'grid' : kindIcon(kind), () => this.select(kind), 'nav-item' + (this.filter === kind && !this.sourceId ? ' active' : ''));
+      const count = all.filter(resource => matchesCategory(resource, kind)).length;
+      const node = button(kind === 'all' ? '全部资源' : kind, kind === 'all' ? 'grid' : 'folder', () => this.select(kind), 'nav-item' + (this.filter === kind && !this.sourceId ? ' active' : ''));
       node.dataset.kind = kind; if (count) node.append(el('span', 'nav-count', count.toLocaleString())); return node;
     }));
-    const list = all.filter(resource => (!this.sourceId || resource.sourceId === this.sourceId) && matchesKind(resource, this.filter) && (!query || [resource.name, resource.path, ...resource.avatars].join(' ').normalize('NFKC').toLowerCase().includes(query)));
+    const list = all.filter(resource => (!this.sourceId || resource.sourceId === this.sourceId) && matchesCategory(resource, this.filter) && matchesKind(resource, this.type) && (!query || [resource.name, resource.path, ...resource.avatars].join(' ').normalize('NFKC').toLowerCase().includes(query)));
     list.sort(this.sort === 'size' ? (a, b) => b.size - a.size : this.sort === 'recent' ? (a, b) => (b.modified || 0) - (a.modified || 0) : (a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
-    const header = el('section', 'page-heading'), heading = el('div'); heading.append(el('div', 'eyebrow', '你的私人资源空间'), el('h1', '', this.sourceId ? this.app.sources.sources.get(this.sourceId)?.name || '本地目录' : kindNames[this.filter]));
-    const description = el('p', 'page-description', all.length ? `${all.length.toLocaleString()} 份资源 · ${this.app.sources.sources.size} 个本地来源 · ${sizeLabel([...this.app.sources.sources.values()].reduce((n, source) => n + source.size, 0))}` : '让模型、贴图与灵感，在这里井然有序。'); heading.append(description);
+    const header = el('section', 'page-heading'), heading = el('div'); heading.append(el('h1', '', this.sourceId ? this.app.sources.sources.get(this.sourceId)?.name || '本地目录' : this.filter === 'all' ? '全部资源' : this.filter));
+    const description = el('p', 'page-description', all.length ? `${all.length.toLocaleString()} 个资源 · ${this.app.sources.sources.size} 个本地来源 · ${sizeLabel([...this.app.sources.sources.values()].reduce((n, source) => n + source.size, 0))}` : '选择本地文件夹或资源包开始浏览，文件仅在浏览器中处理。'); heading.append(description);
     const status = el('span', 'local-state'); status.append(el('i'), document.createTextNode('本地运行')); header.append(heading, status);
     const toolbar = el('div', 'library-toolbar'), left = el('div', 'toolbar-left'); left.append(el('span', 'result-count', query ? `找到 ${list.length.toLocaleString()} 个结果` : `${list.length.toLocaleString()} 个资源`));
-    if (this.sourceId || query || this.filter !== 'all') left.append(button('清除筛选', 'close', () => { this.search.value = ''; this.query = ''; this.select('all'); }, 'text-button'));
+    if (this.sourceId || query || this.filter !== 'all' || this.type !== 'all') left.append(button('清除筛选', 'close', () => { this.search.value = ''; this.query = ''; this.type = 'all'; this.select('all'); }, 'text-button'));
     const right = el('div', 'toolbar-right'), sort = el('select'); sort.setAttribute('aria-label', '资源排序'); for (const [value, label] of [['name', '按名称排序'], ['recent', '最近修改'], ['size', '按文件大小']]) sort.append(new Option(label, value)); sort.value = this.sort; sort.onchange = () => { this.sort = sort.value; this.render(); };
     const gridView = iconButton('卡片视图', 'grid', () => { this.listMode = false; this.render(); }, 'icon-button' + (!this.listMode ? ' selected' : '')), listView = iconButton('列表视图', 'list', () => { this.listMode = true; this.render(); }, 'icon-button' + (this.listMode ? ' selected' : ''));
-    right.append(sort, gridView, listView); toolbar.append(left, right);
+    const type = el('select'); type.setAttribute('aria-label', '内容类型'); for (const [key, label] of Object.entries(kindNames)) type.append(new Option(key === 'all' ? '所有内容类型' : label, key)); type.value = this.type; type.onchange = () => { this.type = type.value; this.render(); };
+    right.append(type, sort, gridView, listView); toolbar.append(left, right);
     this.grid = el('div', 'resource-grid' + (this.listMode ? ' list-view' : ''));
     for (const resource of list.slice(0, this.limit)) this.grid.append(this.card(resource));
     this.main.replaceChildren(header);
@@ -121,7 +125,7 @@ export class Shell {
     else { const placeholder = el('div', 'thumb-placeholder'); placeholder.append(icon(status === 'locked' ? 'lock' : kindIcon(resource.detectedKind || resource.kind), 40)); thumb.replaceChildren(placeholder, el('span', 'thumb-status', status === 'locked' ? '需要密码' : status === 'world' ? '世界不支持预览' : status === 'error' ? '暂不展示' : '暂无预览')); thumb.title = message || ''; }
     card.querySelector('.kind-label').textContent = kindNames[resource.detectedKind || resource.kind];
     for (const nav of this.nav.querySelectorAll('[data-kind]')) {
-      const count = this.app.catalog.resources.filter(item => matchesKind(item, nav.dataset.kind)).length;
+      const count = this.app.catalog.resources.filter(item => matchesCategory(item, nav.dataset.kind)).length;
       let label = nav.querySelector('.nav-count'); if (!label && count) { label = el('span', 'nav-count'); nav.append(label); } if (label) { label.textContent = count.toLocaleString(); label.hidden = !count; }
     }
   }

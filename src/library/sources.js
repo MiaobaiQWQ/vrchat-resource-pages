@@ -43,7 +43,7 @@ export class SourceManager extends EventTarget {
   }
   entry(source, path, read, info) {
     path = normalizePath(path);
-    return { id: `${source.id}:${path}`, sourceId: source.id, scope: source.id, path, name: path.split('/').pop(), kind: fileKind(path), size: info.size, modified: info.lastModified || 0, read };
+    return { id: `${source.id}:${path}`, sourceId: source.id, sourceName: source.name, sourceKind: source.kind, scope: source.id, path, name: path.split('/').pop(), kind: fileKind(path), size: info.size, modified: info.lastModified || 0, read };
   }
   async scan(id) {
     const source = this.sources.get(id); if (!source?.handle) return;

@@ -27,3 +27,12 @@ test('直接目录的模型、嵌套贴图及不同来源不会串组', () => {
   ];
   const resources = createResources(files); assert.equal(resources.length, 2); assert.equal(resources[0].entries.length, 2); assert.equal(resources[1].entries.length, 1);
 });
+test('泳衣目录的封面与改名压缩包归为同一资源，多个版本不拆开', () => {
+  const files = [
+    { id: 'a:zip', sourceId: 'a', sourceName: '衣服', sourceKind: 'directory', path: '泳装/泳衣/kpfel_skmz1.0.zip', kind: 'archive', name: 'kpfel_skmz1.0.zip', size: 100, modified: 1 },
+    { id: 'a:cover', sourceId: 'a', sourceName: '衣服', sourceKind: 'directory', path: '泳装/泳衣/random_base_resized.jpg', kind: 'texture', name: 'random_base_resized.jpg', size: 10, modified: 2 },
+    { id: 'a:other', sourceId: 'a', sourceName: '衣服', sourceKind: 'directory', path: '其他/套装/pack.zip', kind: 'archive', name: 'pack.zip', size: 20, modified: 1 },
+  ];
+  const resources = createResources(files); assert.equal(resources.length, 2); const swim = resources.find(item => item.name === '泳衣');
+  assert.equal(swim.entries.length, 2); assert.equal(swim.archives.length, 1); assert.equal(swim.category, '衣服'); assert.equal(swim.subcategory, '泳装'); assert.equal(swim.size, 110);
+});
