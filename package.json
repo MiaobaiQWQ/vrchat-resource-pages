@@ -10,6 +10,7 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 8770 --strictPort",
     "test": "node --test tests/*.test.js",
+    "release": "npm test && npm run build && node scripts/package.mjs",
     "deploy": "npm run build && wrangler pages deploy dist --project-name local-resource-pages"
   },
   "dependencies": {
