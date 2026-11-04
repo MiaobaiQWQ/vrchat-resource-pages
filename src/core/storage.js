@@ -40,7 +40,7 @@ export async function saveCover(key, blob) {
 export async function purgeSource(sourceId) {
   await storage('sources', 'delete', sourceId);
   const keys = await storage('covers', 'getAllKeys');
-  await Promise.all(keys.filter(key => key.startsWith(sourceId + ':')).map(key => storage('covers', 'delete', key))));
+  await Promise.all(keys.filter(key => key.startsWith(sourceId + ':')).map(key => storage('covers', 'delete', key)));
   const settings = await storage('preferences', 'getAllKeys');
-  await Promise.all(settings.filter(key => key.startsWith('password:' + sourceId + ':')).map(key => storage('preferences', 'delete', key))));
+  await Promise.all(settings.filter(key => key.startsWith('password:' + sourceId + ':')).map(key => storage('preferences', 'delete', key)));
 }

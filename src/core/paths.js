@@ -23,9 +23,10 @@ export function resolveReference(reference, origin, entries) {
   try { input = decodeURIComponent(input); } catch {}
   if (/^(?:https?:|\/\/)/i.test(input)) throw new Error('资源包含远程引用，本站仅加载本地关联文件');
   const sameScope = entries.filter(e => e.scope === origin.scope);
-  let relative;
+  let relative, rootPath;
   try { relative = joinPath(dirname(origin.path), input); } catch {}
-  const direct = sameScope.filter(e => e.path === relative || e.path === normalizePath(input.replace(/^[a-z]:\//i, '')));
+  try { rootPath = normalizePath(input.replace(/^[a-z]:\//i, '')); } catch {}
+  const direct = sameScope.filter(e => e.path === relative || e.path === rootPath);
   if (direct.length === 1) return direct[0];
   const key = input.normalize('NFKC').toLowerCase();
   const suffix = sameScope.filter(e => key.endsWith('/' + e.path.normalize('NFKC').toLowerCase()));
