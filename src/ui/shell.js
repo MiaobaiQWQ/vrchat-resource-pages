@@ -207,11 +207,7 @@ export class Shell {
     this.drop.append(
       icon("folder", 56),
       el("h2", "", "松开就添加"),
-      el(
-        "p",
-        "",
-        "文件夹、模型、贴图或压缩包，整个页面都可以拖进来",
-      ),
+      el("p", "", "文件夹、模型、贴图或压缩包，整个页面都可以拖进来"),
     );
     let depth = 0;
     const hideDrop = () => {
@@ -514,7 +510,9 @@ export class Shell {
     this.loadMore = null;
     this.main.replaceChildren(header);
     const restoring = [...this.app.sources.sources.values()].filter((source) =>
-      ["prompt", "denied", "reselect", "moved", "error"].includes(source.status),
+      ["prompt", "denied", "reselect", "moved", "error"].includes(
+        source.status,
+      ),
     );
     if (restoring.length) {
       const notice = el("div", "restore-banner");
@@ -701,10 +699,10 @@ export class Shell {
       node.append(actions);
       const formats = el("div", "format-pills");
       for (const label of [
-        "FBX / GLB",
-        "ZIP / 7z / RAR",
+        "FBX / GLB / OBJ / 3MF",
+        "ZIP / 7z / RAR / XZ",
         "Unitypackage",
-        "PNG / PSD / TGA",
+        "PNG / PSD / PSB / TGA",
       ])
         formats.append(el("span", "", label));
       node.append(formats);
@@ -733,7 +731,7 @@ export class Shell {
       el(
         "p",
         "",
-        "支持常见 3D 模型、图像、音视频、文档与 Unity 资源。ZIP、Unitypackage、TAR、7z、RAR 可在本地解析，递归嵌套最多 6 层。大 Unity 容器按需分块提取，上限 2 GB；普通文件、模型与 RAR / 7z 的读取上限为 512 MB，更大的资源可先解压后添加目录。",
+        "支持 FBX、glTF、OBJ、3MF、3DS、AMF、VTK、VRML 等模型；OBJ 可关联本地 MTL 与贴图。图像支持 PSD、PSB、TGA、TIFF 及常见压缩纹理。ZIP、Unitypackage、TAR、7z、RAR、BZIP2、XZ 可在本地解析，递归嵌套最多 6 层。大 Unity 容器按需分块提取，上限 2 GB；普通文件、模型与 7z、RAR、BZIP2、XZ 容器上限 512 MB，更大的资源可先解压后添加目录。KTX、PVR 的压缩编码需要显卡支持，不兼容时会提示转换格式。",
       ),
       el(
         "p",

@@ -51,11 +51,12 @@ npm run deploy
 
 ## 格式与限制
 
-- 模型：FBX、GLB、glTF、VRM、OBJ、STL、PLY、Collada；支持 glTF 的 Draco、Meshopt 和 KTX2 解码。特殊扩展与自定义着色器不保证与 Unity 完全一致。
-- 图像：浏览器原生图像及 PSD、TGA、TIFF、DDS、EXR、HDR、KTX2。PSD 需要已保存的合成图；不支持所有颜色模式与 Photoshop 特效。
-- 容器：ZIP、Unitypackage、TAR、gzip、7z、RAR；递归嵌套最多 6 层。ZIP 密码按资源设置，可选仅在本浏览器保存。大 Unity 容器使用流式索引与按需提取，容器及展开数据上限 2 GB；普通单资源、RAR / 7z 及模型解码上限 512 MB。
+- 模型：FBX、GLB、glTF、VRM、OBJ、STL、PLY、Collada、3MF、3DS、AMF、VTK/VTP、VRML 2.0（WRL）。OBJ 读取 `mtllib` 指定的本地 MTL，贴图按 MTL 所在目录解析相对路径，支持空格与中文；缺失或重名引用给出提示。支持 glTF 的 Draco、Meshopt 和 KTX2 解码。新增模型加载器按需下载。VTK 限 POLYDATA；3MF 扩展、VRML 场景行为和特殊着色器不保证完整支持。Blend、PMX、PMD 等尚不能直接预览。
+- 图像：浏览器原生图像及 PSD、PSB、TGA、TIFF、DDS、EXR、HDR、KTX2、KTX、PVR。PSD/PSB 需要已保存的合成图，上限 6400 万像素；不支持所有颜色模式与 Photoshop 特效。KTX 当前读取二维压缩纹理，PVR 当前读取 PVRTC；压缩编码依赖显卡与浏览器，不支持时会显示转换格式提示。
+- 容器：ZIP、Unitypackage、TAR、gzip、7z、RAR、BZIP2（BZ2/TBZ/TBZ2）、XZ（XZ/TXZ），包括 TAR.BZ2 与 TAR.XZ；递归嵌套最多 6 层。ZIP 密码按资源设置，可选仅在本浏览器保存。大 Unity 容器使用流式索引与按需提取，容器及展开数据上限 2 GB；普通单资源、7z/RAR/BZIP2/XZ 容器及模型解码上限 512 MB。
 - Unity：可读材质、预制体、动画与控制器元数据，并调整模型内的 BlendShape；不执行包内脚本、插件和世界。只有未提供绑定关系的同名部件材质会使用带提示的推断匹配。
 - 媒体与文档：音视频由浏览器解码；文本只读，过大文本限制展示前 2 MB。
 
 兼容性说明只描述已实现的读取路径，不代表所有导出器、包内容、媒体编码或设备都经过验证。实测样本与限制写在 `npm test` 覆盖的用例里；此版本未提供 Unity 一键导入插件。
+
 
