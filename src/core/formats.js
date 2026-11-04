@@ -2,13 +2,13 @@ import { extension, comparisonKey } from './paths.js';
 
 const groups = {
   model: ['fbx', 'glb', 'gltf', 'vrm', 'obj', 'stl', 'ply', 'dae'],
-  texture: ['png', 'jpg', 'jpeg', 'webp', 'avif', 'gif', 'bmp', 'svg', 'tga', 'psd', 'dds', 'tif', 'tiff', 'exr', 'hdr'],
+  texture: ['png', 'jpg', 'jpeg', 'webp', 'avif', 'gif', 'bmp', 'svg', 'tga', 'psd', 'dds', 'tif', 'tiff', 'exr', 'hdr', 'ktx2'],
   archive: ['zip', 'unitypackage', 'tar', 'gz', 'tgz', '7z', 'rar'],
   audio: ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'opus'],
   video: ['mp4', 'webm', 'mov', 'm4v', 'ogv'],
   document: ['txt', 'md', 'json', 'yaml', 'yml', 'csv', 'xml', 'html', 'css', 'js', 'ts', 'cs', 'shader', 'cginc', 'pdf', 'log'],
   unity: ['prefab', 'mat', 'asset', 'meta', 'controller', 'overridecontroller', 'anim', 'mask', 'blendshape'],
-  unsupported: ['blend', 'max', 'ma', 'mb', 'pmx', 'pmd', 'vmd', 'vrca', 'ktx', 'ktx2', 'psb', 'spp', 'sbsar'],
+  unsupported: ['blend', 'max', 'ma', 'mb', 'pmx', 'pmd', 'vmd', 'vrca', 'ktx', 'psb', 'spp', 'sbsar'],
   world: ['unity', 'vrcw'],
 };
 const lookup = new Map(Object.entries(groups).flatMap(([kind, exts]) => exts.map(ext => ['.' + ext, kind])));
