@@ -19,11 +19,23 @@ export class CoverQueue extends EventTarget {
             if (!this.states.has(resource.id))
               this.pending.set(resource.id, resource);
           }
-        this.next();
+        this.schedule(0);
       },
       { rootMargin: "180px" },
     );
-    document.addEventListener("visibilitychange", () => this.next());
+    document.addEventListener("visibilitychange", () => this.schedule(0));
+  }
+  // 封面要解析压缩包、跑 three 渲染，很吃主线程；放到浏览器空闲时段做，滚动和输入就不会被顶住。
+  schedule(delay = 90) {
+    if (this.timer || this.idle) return;
+    const run = () => {
+      this.timer = 0;
+      this.idle = 0;
+      this.next();
+    };
+    if (typeof requestIdleCallback === "function")
+      this.idle = requestIdleCallback(run, { timeout: 600 });
+    else this.timer = setTimeout(run, delay);
   }
   observe(element, resource) {
     element.resource = resource;
@@ -32,6 +44,14 @@ export class CoverQueue extends EventTarget {
   reset() {
     this.observer.disconnect();
     this.pending.clear();
+    if (this.idle) {
+      cancelIdleCallback?.(this.idle);
+      this.idle = 0;
+    }
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = 0;
+    }
   }
   update(resource, status, extra = {}) {
     const state = { status, ...extra };
@@ -49,13 +69,15 @@ export class CoverQueue extends EventTarget {
     const epoch = this.catalog.epoch;
     try {
       this.update(resource, "loading");
-      const key =
-        resource.id +
-        ":" +
-        resource.size +
-        ":" +
-        resource.modified +
-        ":manual-v2";
+      // 封面缓存按“内容指纹”取，而不是按路径：目录整体改名/搬家后仍能认回原来的封面，
+      // 不必把所有模型重新渲染一遍。
+      const key = [
+        resource.name,
+        resource.size,
+        resource.modified,
+        resource.entries?.length || 0,
+        "manual-v3",
+      ].join(":");
       const cached = await storage("covers", "get", key).catch(() => null);
       if (cached) {
         resource.detectedKind = cached.kind;
@@ -82,6 +104,7 @@ export class CoverQueue extends EventTarget {
         });
         if (!cached)
           await saveCover(key, blob, {
+            sourceId: resource.sourceId,
             kind: resource.detectedKind || resource.kind,
             generated: resource.coverGenerated,
             avatars: resource.avatars,
@@ -98,7 +121,7 @@ export class CoverQueue extends EventTarget {
       );
     } finally {
       this.working = false;
-      setTimeout(() => this.next(), 90);
+      this.schedule();
     }
   }
   async create(resource) {
@@ -128,7 +151,7 @@ export class CoverQueue extends EventTarget {
     if (state?.url) URL.revokeObjectURL(state.url);
     this.states.delete(resource.id);
     this.pending.set(resource.id, resource);
-    this.next();
+    this.schedule(0);
   }
   forget(sourceId) {
     for (const [id, state] of this.states)

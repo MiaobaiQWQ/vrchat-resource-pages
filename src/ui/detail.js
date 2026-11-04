@@ -793,7 +793,12 @@ export class Detail {
       list.replaceChildren(nodes(tree, 0));
       if (!entries.length) list.append(el("p", "muted", "没有匹配的文件。"));
     };
-    search.oninput = draw;
+    // 每敲一个字就重建整棵树，文件多的资源会明显卡；输入停下 120ms 再画。
+    let timer = 0;
+    search.oninput = () => {
+      clearTimeout(timer);
+      timer = setTimeout(draw, 120);
+    };
     draw();
     pane.append(search, list);
   }

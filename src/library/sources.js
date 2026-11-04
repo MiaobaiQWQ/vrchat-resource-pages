@@ -3,6 +3,17 @@ import { normalizePath, isAuxiliary } from "../core/paths.js";
 import { fileKind } from "../core/formats.js";
 import { identifyFile } from "../core/signature.js";
 
+// crypto.randomUUID 只在安全上下文（https / localhost）可用；局域网 http 打开时不能直接拿它当唯一 ID。
+const newId = () =>
+  globalThis.crypto?.randomUUID?.() ??
+  `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+// 目录被移动、改名或所在盘符变化后，旧句柄会失效；这些错误要单独提示“重新定位”，不能当成权限问题。
+const isLostDirectory = (error) =>
+  ["NotFoundError", "NotReadableError", "TypeMismatchError"].includes(
+    error?.name,
+  );
+
 export class SourceManager extends EventTarget {
   sources = new Map();
   active = new Map();
@@ -18,7 +29,7 @@ export class SourceManager extends EventTarget {
         record.status = record.handle
           ? await record.handle
               .queryPermission({ mode: "read" })
-              .catch(() => "prompt")
+              .catch((error) => (isLostDirectory(error) ? "moved" : "prompt"))
           : "reselect";
         this.sources.set(record.id, record);
       }
@@ -41,14 +52,15 @@ export class SourceManager extends EventTarget {
     for (const source of this.sources.values())
       if (
         source.handle &&
+        source.id !== sourceId &&
         (await source.handle.isSameEntry(handle).catch(() => false))
       ) {
         await this.scan(source.id);
         return source;
       }
+    const existing = sourceId ? this.sources.get(sourceId) : null;
     const source = {
-      id:
-        sourceId && this.sources.has(sourceId) ? sourceId : crypto.randomUUID(),
+      id: existing?.id ?? newId(),
       name: handle.name,
       handle,
       kind: "directory",
@@ -56,7 +68,8 @@ export class SourceManager extends EventTarget {
       files: [],
       count: 0,
       size: 0,
-      addedAt: Date.now(),
+      addedAt: existing?.addedAt ?? Date.now(),
+      relinkedAt: existing ? Date.now() : undefined,
     };
     this.sources.set(source.id, source);
     await this.persist(source);
@@ -72,7 +85,9 @@ export class SourceManager extends EventTarget {
         : `本地文件 · ${files.length} 项`;
     const source = {
       id:
-        sourceId && this.sources.has(sourceId) ? sourceId : crypto.randomUUID(),
+        sourceId && this.sources.has(sourceId)
+          ? sourceId
+          : newId(),
       name: root,
       kind: folder ? "folder-files" : "files",
       status: "session",
@@ -177,9 +192,15 @@ export class SourceManager extends EventTarget {
       );
     } catch (error) {
       if (error.name !== "AbortError") {
-        source.status = error.name === "NotAllowedError" ? "prompt" : "error";
-        source.error = error.message;
-        this.changed();
+        if (isLostDirectory(error)) {
+          source.status = "moved";
+          source.error = error.message;
+          this.changed("目录已移动或改名，请重新定位：" + source.name);
+        } else {
+          source.status = error.name === "NotAllowedError" ? "prompt" : "error";
+          source.error = error.message;
+          this.changed();
+        }
       }
     } finally {
       if (this.active.get(id) === controller) this.active.delete(id);
@@ -188,7 +209,17 @@ export class SourceManager extends EventTarget {
   async restore(id) {
     const source = this.sources.get(id);
     if (!source?.handle) return false;
-    const permission = await source.handle.requestPermission({ mode: "read" });
+    let permission;
+    try {
+      permission = await source.handle.requestPermission({ mode: "read" });
+    } catch (error) {
+      if (isLostDirectory(error)) {
+        source.status = "moved";
+        this.changed("目录已移动或改名，请重新定位：" + source.name);
+        return false;
+      }
+      throw error;
+    }
     source.status = permission;
     if (permission === "granted") await this.scan(id);
     else this.changed("未获得读取权限，可以稍后再次恢复");

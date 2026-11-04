@@ -59,10 +59,12 @@ export async function saveCover(key, blob, metadata = {}) {
 
 export async function purgeSource(sourceId) {
   await storage("sources", "delete", sourceId);
+  // 封面键是内容指纹，不带来源前缀；按写入时记录的 sourceId 清理，避免误删别的来源。
   const keys = await storage("covers", "getAllKeys");
+  const values = await storage("covers", "getAll");
   await Promise.all(
     keys
-      .filter((key) => key.startsWith(sourceId + ":"))
+      .filter((key, index) => values[index]?.sourceId === sourceId)
       .map((key) => storage("covers", "delete", key)),
   );
   const settings = await storage("preferences", "getAllKeys");

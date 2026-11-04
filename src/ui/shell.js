@@ -310,14 +310,16 @@ export class Shell {
             ? "正在读取目录…"
             : source.status === "prompt" || source.status === "denied"
               ? "需要恢复访问"
-              : source.status === "reselect"
-                ? "需要重新选择"
-                : `${source.count.toLocaleString()} 个文件${source.status === "session" ? " · 本次会话" : ""}`,
+              : source.status === "moved"
+                ? "目录已移动，请重新定位"
+                : source.status === "reselect"
+                  ? "需要重新选择"
+                  : `${source.count.toLocaleString()} 个文件${source.status === "session" ? " · 本次会话" : ""}`,
         ),
       );
       choose.append(copy);
       const actions = el("div", "source-actions");
-      if (["prompt", "denied", "error"].includes(source.status))
+      if (["prompt", "denied"].includes(source.status))
         actions.append(
           iconButton("恢复目录访问", "lock", () =>
             this.app.sources
@@ -331,16 +333,22 @@ export class Shell {
             this.app.sources.scan(source.id),
           ),
         );
-      if (source.status === "reselect")
+      if (["reselect", "moved", "error"].includes(source.status))
         actions.append(
-          iconButton("重新选择目录或文件", "folder", () => {
-            this.reselectId = source.id;
-            source.kind === "files"
-              ? this.fileInput.click()
-              : source.kind === "folder-files"
-                ? this.folderInput.click()
-                : this.pickDirectory();
-          }),
+          iconButton(
+            source.status === "reselect"
+              ? "重新选择目录或文件"
+              : "按新路径重新定位",
+            "folder",
+            () => {
+              this.reselectId = source.id;
+              source.kind === "files"
+                ? this.fileInput.click()
+                : source.kind === "folder-files"
+                  ? this.folderInput.click()
+                  : this.pickDirectory();
+            },
+          ),
         );
       actions.append(
         iconButton(`移除来源 ${source.name}`, "close", async () => {
@@ -496,11 +504,16 @@ export class Shell {
       "div",
       "resource-grid" + (this.listMode ? " list-view" : ""),
     );
+    // 一次性拼进文档片段：逐个 append 会让浏览器反复做样式与布局计算。
+    const fragment = document.createDocumentFragment();
     for (const resource of list.slice(0, this.limit))
-      this.grid.append(this.card(resource));
+      fragment.append(this.card(resource));
+    this.grid.append(fragment);
+    this.list = list;
+    this.loadMore = null;
     this.main.replaceChildren(header);
     const restoring = [...this.app.sources.sources.values()].filter((source) =>
-      ["prompt", "denied", "reselect", "error"].includes(source.status),
+      ["prompt", "denied", "reselect", "moved", "error"].includes(source.status),
     );
     if (restoring.length) {
       const notice = el("div", "restore-banner");
@@ -525,18 +538,15 @@ export class Shell {
     if (!list.length) this.main.append(this.empty(!!all.length || !!query));
     else {
       this.main.append(toolbar, this.grid);
-      if (list.length > this.limit)
-        this.main.append(
-          button(
-            `加载更多 · 还有 ${list.length - this.limit} 项`,
-            "plus",
-            () => {
-              this.limit += 48;
-              this.render();
-            },
-            "button load-more",
-          ),
+      if (list.length > this.limit) {
+        this.loadMore = button(
+          `加载更多 · 还有 ${list.length - this.limit} 项`,
+          "plus",
+          () => this.more(),
+          "button load-more",
         );
+        this.main.append(this.loadMore);
+      }
     }
     const footer = el("footer", "content-footer");
     footer.append(
@@ -544,6 +554,28 @@ export class Shell {
       document.createTextNode("在浏览器中读取 · 原始文件保持不变"),
     );
     this.main.append(footer);
+  }
+  // 追加下一页：只创建新增的卡片，不再整页重建（重建会重新解码封面、丢失滚动位置）。
+  more() {
+    const list = this.list || [],
+      slice = list.slice(this.limit, this.limit + 48);
+    if (!slice.length) return;
+    const fragment = document.createDocumentFragment();
+    for (const resource of slice) fragment.append(this.card(resource));
+    this.grid.append(fragment);
+    this.limit += slice.length;
+    this.refreshLoadMore();
+  }
+  refreshLoadMore() {
+    const remaining = (this.list?.length || 0) - this.limit;
+    if (!this.loadMore) return;
+    if (remaining <= 0) {
+      this.loadMore.remove();
+      this.loadMore = null;
+      return;
+    }
+    const label = this.loadMore.querySelector("span:not(.icon)");
+    if (label) label.textContent = `加载更多 · 还有 ${remaining} 项`;
   }
   card(resource) {
     const card = button(
@@ -634,20 +666,6 @@ export class Shell {
     }
     card.querySelector(".kind-label").textContent =
       kindNames[resource.detectedKind || resource.kind];
-    for (const nav of this.nav.querySelectorAll("[data-kind]")) {
-      const count = this.app.catalog.resources.filter((item) =>
-        matchesCategory(item, nav.dataset.kind),
-      ).length;
-      let label = nav.querySelector(".nav-count");
-      if (!label && count) {
-        label = el("span", "nav-count");
-        nav.append(label);
-      }
-      if (label) {
-        label.textContent = count.toLocaleString();
-        label.hidden = !count;
-      }
-    }
   }
   empty(filtered) {
     const node = el("section", "empty-state");
