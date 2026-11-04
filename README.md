@@ -22,16 +22,18 @@ npm run build
 
 Git 集成：框架预设选择 Vite，构建命令 `npm run build`，产物目录 `dist`，Node.js 版本设置为 24。只发布构建产物，不发布本地资源目录。
 
+仓库里**不要放 Wrangler 配置文件**（`wrangler.jsonc` / `wrangler.toml`）：Pages 一旦在仓库里找到它，就把它当作唯一配置来源，仪表盘的构建命令被禁用，而 Pages 的 Wrangler 配置又没有"构建命令"字段，构建日志会变成 `No build command specified. Skipping build step.` → `Output directory "dist" not found`。所以本项目把它删掉了，构建参数只放在仪表盘。
+
 **Deploy command 必须留空**（部分新建项目会预填 `npx wrangler deploy`，那是 Workers 的命令，会在构建成功后报 `Missing entry-point to Worker script or to assets directory`，日志里还会出现 `you have run wrangler deploy on a Pages project`）。Pages 会在构建完成后自行上传 `dist`，不需要再跑部署命令；确实要填就填 `npx wrangler pages deploy dist`。
 
-直接上传：登录自己的 Cloudflare 账号后执行：
+直接上传（不经过 Git 集成）：登录自己的 Cloudflare 账号后执行：
 
 ```sh
 npx wrangler login
 npm run deploy
 ```
 
-项目名称与产物目录只在 `wrangler.jsonc` 中设置（`npm run deploy` 直接沿用配置），换账号或改项目名只改这一处。构建产物使用相对路径，部署在根路径、子目录或 GitHub Pages 项目页下都能直接打开。
+`npm run deploy` 里的项目名 `vrchat-resource-pages` 是唯一的写死项（Pages Direct Upload 必须显式指定）；改项目名时同时改 `package.json` 那一行。构建产物使用相对路径，部署在根路径、子目录或 GitHub Pages 项目页下都能直接打开。
 
 发布地址和 localhost 的浏览器存储相互独立，首次访问新域名时需要重新添加目录。
 
