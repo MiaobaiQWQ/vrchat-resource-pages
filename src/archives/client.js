@@ -40,8 +40,8 @@ export class ArchiveClient {
     return listing.entries.filter(item => !isAuxiliary(item.path)).map(item => ({
       id: entry.id + '!/' + item.path, sourceId: entry.sourceId, scope: entry.id, path: item.path, name: item.path.split('/').pop(), kind: fileKind(item.path), size: item.size,
       modified: entry.modified, guid: item.guid, packageId: listing.isUnity ? entry.id : undefined, encrypted: item.encrypted,
-      read: async () => this.request({ operation: 'read', id: entry.id, file: await entry.read(), kind, path: item.path, password: await this.password(resourceId) }),
-      readMeta: item.meta ? async () => this.request({ operation: 'read', id: entry.id, file: await entry.read(), kind, path: item.path, meta: true }) : undefined,
+      read: async () => this.request({ operation: 'read', id: entry.id, file, kind, path: item.path, password: await this.password(resourceId) }),
+      readMeta: item.meta ? async () => this.request({ operation: 'read', id: entry.id, file, kind, path: item.path, meta: true }) : undefined,
     }));
   }
   async otherChildren(entry, resourceId) {

@@ -49,6 +49,7 @@ export class Catalog extends EventTarget {
     this.dispatchEvent(new Event('change'));
   }
   async expand(resource, full = false) {
+    resource.references = [...this.sources.files().filter(entry => entry.sourceId === resource.sourceId), ...resource.entries];
     const field = full ? 'fullPromise' : 'listPromise';
     if (resource[field]) return resource[field];
     resource[field] = (async () => {
@@ -68,6 +69,7 @@ export class Catalog extends EventTarget {
       };
       for (const entry of [...resource.entries].filter(e => e.kind === 'archive')) await walk(entry, 0);
       resource.models = resource.entries.filter(e => e.kind === 'model'); resource.textures = resource.entries.filter(e => e.kind === 'texture');
+      resource.references = [...new Map([...this.sources.files().filter(entry => entry.sourceId === resource.sourceId), ...resource.entries].map(entry => [entry.id, entry])).values()];
       if (resource.models.length) resource.detectedKind = 'model'; else if (resource.textures.length) resource.detectedKind = 'texture';
       resource.isWorld = resource.entries.some(e => e.kind === 'world') && !resource.models.length;
       if (!resource.avatars.length) resource.avatars = detectAvatars(resource.entries.map(entry => entry.path).join(' '));

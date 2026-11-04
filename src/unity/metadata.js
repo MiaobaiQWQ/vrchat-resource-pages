@@ -60,7 +60,7 @@ export function parseRemaps(text) {
 }
 
 export async function buildBindings(resource, model) {
-  const entries = resource.entries, byGuid = new Map(), byName = new Map(), materialData = new Map(), rendererData = new Map();
+  const entries = resource.references || resource.entries, byGuid = new Map(), byName = new Map(), materialData = new Map(), rendererData = new Map();
   const scoped = [...entries].sort((a, b) => Number(b.scope === model.scope) - Number(a.scope === model.scope));
   for (const entry of scoped) if (entry.guid && !byGuid.has(entry.guid)) byGuid.set(entry.guid, entry);
   const looseMeta = entries.filter(entry => extension(entry.path) === '.meta' && entry.size < 512000);

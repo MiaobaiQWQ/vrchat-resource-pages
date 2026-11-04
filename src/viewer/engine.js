@@ -56,7 +56,7 @@ async function dependencies(entry, resource, catalog) {
   }
   for (const item of [...json.buffers || [], ...json.images || []]) {
     if (!item.uri || item.uri.startsWith('data:')) continue;
-    const related = resolveReference(item.uri, entry, resource.entries);
+    const related = resolveReference(item.uri, entry, resource.references || resource.entries);
     if (!related) throw new Error('缺少模型关联文件：' + item.uri);
     mappings.set(item.uri, await catalog.url(related));
   }
@@ -121,7 +121,7 @@ export async function loadModel(resource, entry, catalog, images, { thumbnail = 
         const material = new THREE.MeshBasicMaterial({ name: source.name, color: source.map ? 0xffffff : source.color || 0xcad3dc, map: source.map, transparent: source.transparent, opacity: source.opacity, alphaTest: source.alphaTest, side: THREE.DoubleSide, vertexColors: !!source.vertexColors, toneMapped: false });
         let data = bindings.resolve(node.name, source.name, slot, used);
         if (!data && !gltf) {
-          const candidates = resource.entries.filter(e => e.kind === 'texture' && isColorTexture(e.name));
+          const candidates = (resource.references || resource.entries).filter(e => e.kind === 'texture' && isColorTexture(e.name));
           const keys = [comparisonKey(stem(source.map?.name || '')), comparisonKey(source.name)];
           const matches = candidates.filter(e => keys.some(key => key.length > 2 && comparisonKey(stem(e.path)) === key));
           if (matches.length === 1) data = { texture: matches[0], color: [1, 1, 1, 1], scale: [1, 1], offset: [0, 0], cull: 0 };
