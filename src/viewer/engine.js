@@ -26,6 +26,7 @@ import { mapLimit } from "../core/async.js";
 import { canvasBlob, loadImage } from "../images/service.js";
 import { randomTextureOptions } from "./texture-options.js";
 import { createMeshMaterial } from "./materials.js";
+import { assetUrl } from "../core/assets.js";
 
 const WHITE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR1kAAAAASUVORK5CYII=";
@@ -171,11 +172,11 @@ export async function loadModel(
         ),
       );
     } else {
-      draco = new DRACOLoader().setDecoderPath("/vendor/draco/");
+      draco = new DRACOLoader().setDecoderPath(assetUrl("vendor/draco/"));
       if (!coverRenderer)
         coverRenderer = rendererFor(document.createElement("canvas"), true);
       ktx = new KTX2Loader()
-        .setTranscoderPath("/vendor/basis/")
+        .setTranscoderPath(assetUrl("vendor/basis/"))
         .detectSupport(coverRenderer);
       const gltf = await new GLTFLoader(manager)
         .setDRACOLoader(draco)
@@ -584,7 +585,7 @@ export async function renderImageFile(file, ext) {
           ? new EXRLoader()
           : ext === ".ktx2"
             ? new KTX2Loader()
-                .setTranscoderPath("/vendor/basis/")
+                .setTranscoderPath(assetUrl("vendor/basis/"))
                 .detectSupport(coverRenderer)
             : new HDRLoader();
     texture = await loader.loadAsync(url);

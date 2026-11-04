@@ -8,6 +8,8 @@ const headers = {
 };
 
 export default defineConfig({
+  // 相对 base：部署到根路径、子目录、GitHub Pages 项目页或直接拿 dist 本地打开都能取到资源。
+  base: "./",
   preview: { headers },
   build: { chunkSizeWarningLimit: 1100 },
 });

@@ -1,6 +1,7 @@
 import { extension, isAuxiliary } from "../core/paths.js";
 import { fileKind } from "../core/formats.js";
 import { storage } from "../core/storage.js";
+import { assetUrl } from "../core/assets.js";
 
 export class ArchiveClient {
   worker;
@@ -113,7 +114,7 @@ export class ArchiveClient {
       if (entry.size > 512 * 1024 * 1024)
         throw new Error("RAR / 7z 容器超过 512 MB，请先解压到目录");
       const { Archive } = await import("libarchive.js");
-      Archive.init({ workerUrl: "/vendor/libarchive/worker-bundle.js" });
+      Archive.init({ workerUrl: assetUrl("vendor/libarchive/worker-bundle.js") });
       const reader = await Archive.open(await entry.read());
       try {
         const password = await this.password(resourceId);
