@@ -1,6 +1,6 @@
-import { storage, saveCover } from '../core/storage.js';
-import { extension } from '../core/paths.js';
-import { friendlyError } from '../core/async.js';
+import { storage, saveCover } from "../core/storage.js";
+import { extension } from "../core/paths.js";
+import { friendlyError } from "../core/async.js";
 
 export class CoverQueue extends EventTarget {
   pending = new Map();
@@ -8,53 +8,134 @@ export class CoverQueue extends EventTarget {
   working = false;
   paused = false;
   constructor(catalog, images) {
-    super(); this.catalog = catalog; this.images = images;
-    this.observer = new IntersectionObserver(entries => {
-      for (const entry of entries) if (entry.isIntersecting) {
-        const resource = entry.target.resource;
-        if (!this.states.has(resource.id)) this.pending.set(resource.id, resource);
-      }
-      this.next();
-    }, { rootMargin: '180px' });
-    document.addEventListener('visibilitychange', () => this.next());
+    super();
+    this.catalog = catalog;
+    this.images = images;
+    this.observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries)
+          if (entry.isIntersecting) {
+            const resource = entry.target.resource;
+            if (!this.states.has(resource.id))
+              this.pending.set(resource.id, resource);
+          }
+        this.next();
+      },
+      { rootMargin: "180px" },
+    );
+    document.addEventListener("visibilitychange", () => this.next());
   }
-  observe(element, resource) { element.resource = resource; this.observer.observe(element); }
-  reset() { this.observer.disconnect(); this.pending.clear(); }
+  observe(element, resource) {
+    element.resource = resource;
+    this.observer.observe(element);
+  }
+  reset() {
+    this.observer.disconnect();
+    this.pending.clear();
+  }
   update(resource, status, extra = {}) {
-    const state = { status, ...extra }; this.states.set(resource.id, state); this.dispatchEvent(new CustomEvent('cover', { detail: { resource, ...state } }));
+    const state = { status, ...extra };
+    this.states.set(resource.id, state);
+    this.dispatchEvent(
+      new CustomEvent("cover", { detail: { resource, ...state } }),
+    );
   }
   async next() {
     if (this.working || this.paused || document.hidden) return;
-    const resource = this.pending.values().next().value; if (!resource) return;
-    this.pending.delete(resource.id); this.working = true;
+    const resource = this.pending.values().next().value;
+    if (!resource) return;
+    this.pending.delete(resource.id);
+    this.working = true;
     const epoch = this.catalog.epoch;
     try {
-      this.update(resource, 'loading');
-      const key = resource.id + ':' + resource.size + ':' + resource.modified + ':manual-v2';
-      const cached = await storage('covers', 'get', key).catch(() => null);
-      if (cached) { resource.detectedKind = cached.kind; resource.coverGenerated = cached.generated; resource.avatars = cached.avatars || resource.avatars; }
+      this.update(resource, "loading");
+      const key =
+        resource.id +
+        ":" +
+        resource.size +
+        ":" +
+        resource.modified +
+        ":manual-v2";
+      const cached = await storage("covers", "get", key).catch(() => null);
+      if (cached) {
+        resource.detectedKind = cached.kind;
+        resource.coverGenerated = cached.generated;
+        resource.avatars = cached.avatars || resource.avatars;
+      }
       let blob = cached?.blob;
       if (!blob) blob = await this.create(resource);
-      if (epoch !== this.catalog.epoch) { this.states.delete(resource.id); return; }
+      if (
+        !this.catalog.resources.some(
+          (item) =>
+            item.id === resource.id &&
+            item.size === resource.size &&
+            item.modified === resource.modified,
+        )
+      ) {
+        this.states.delete(resource.id);
+        return;
+      }
       if (blob) {
-        this.update(resource, 'ready', { url: URL.createObjectURL(blob), generated: resource.coverGenerated });
-        if (!cached) await saveCover(key, blob, { kind: resource.detectedKind || resource.kind, generated: resource.coverGenerated, avatars: resource.avatars }).catch(() => {});
-      } else this.update(resource, resource.isWorld ? 'world' : 'empty', { message: resource.isWorld ? '世界不支持预览' : '暂无可展示内容' });
+        this.update(resource, "ready", {
+          url: URL.createObjectURL(blob),
+          generated: resource.coverGenerated,
+        });
+        if (!cached)
+          await saveCover(key, blob, {
+            kind: resource.detectedKind || resource.kind,
+            generated: resource.coverGenerated,
+            avatars: resource.avatars,
+          }).catch(() => {});
+      } else
+        this.update(resource, resource.isWorld ? "world" : "empty", {
+          message: resource.isWorld ? "世界不支持预览" : "暂无可展示内容",
+        });
     } catch (error) {
-      this.update(resource, error.code === 'PASSWORD_REQUIRED' ? 'locked' : 'error', { message: friendlyError(error) });
-    } finally { this.working = false; setTimeout(() => this.next(), 90); }
+      this.update(
+        resource,
+        error.code === "PASSWORD_REQUIRED" ? "locked" : "error",
+        { message: friendlyError(error) },
+      );
+    } finally {
+      this.working = false;
+      setTimeout(() => this.next(), 90);
+    }
   }
   async create(resource) {
+    const known = resource.entries.find(
+      (entry) =>
+        entry.kind === "texture" &&
+        /cover|preview|thumbnail|base_resized/i.test(entry.name),
+    );
+    if (known) return this.images.thumbnail(known);
     await this.catalog.expand(resource, false);
-    const textures = resource.entries.filter(entry => entry.kind === 'texture');
-    const cover = textures.find(entry => /(?:^|[\s/_-])(?:cover|preview|thumbnail|main|base_resized)(?:[\s_.-]|$)/i.test(entry.path));
+    const textures = resource.entries.filter(
+      (entry) => entry.kind === "texture",
+    );
+    const cover = textures.find((entry) =>
+      /(?:^|[\s/_-])(?:cover|preview|thumbnail|main|base_resized)(?:[\s_.-]|$)/i.test(
+        entry.path,
+      ),
+    );
     if (cover) return this.images.thumbnail(cover);
-    if (resource.kind === 'texture' && textures.length) return this.images.thumbnail(textures[0]);
-    const first = resource.entries.find(entry => entry.kind === 'texture');
+    if (resource.kind === "texture" && textures.length)
+      return this.images.thumbnail(textures[0]);
+    const first = resource.entries.find((entry) => entry.kind === "texture");
     return first ? this.images.thumbnail(first) : null;
   }
-  retry(resource) { const state = this.states.get(resource.id); if (state?.url) URL.revokeObjectURL(state.url); this.states.delete(resource.id); this.pending.set(resource.id, resource); this.next(); }
+  retry(resource) {
+    const state = this.states.get(resource.id);
+    if (state?.url) URL.revokeObjectURL(state.url);
+    this.states.delete(resource.id);
+    this.pending.set(resource.id, resource);
+    this.next();
+  }
   forget(sourceId) {
-    for (const [id, state] of this.states) if (id.startsWith(sourceId + ':')) { if (state.url) URL.revokeObjectURL(state.url); this.states.delete(id); this.pending.delete(id); }
+    for (const [id, state] of this.states)
+      if (id.startsWith(sourceId + ":")) {
+        if (state.url) URL.revokeObjectURL(state.url);
+        this.states.delete(id);
+        this.pending.delete(id);
+      }
   }
 }
