@@ -25,6 +25,7 @@ import { buildBindings } from "../unity/metadata.js";
 import { mapLimit } from "../core/async.js";
 import { canvasBlob, loadImage } from "../images/service.js";
 import { randomTextureOptions } from "./texture-options.js";
+import { createMeshMaterial } from "./materials.js";
 
 const WHITE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR1kAAAAASUVORK5CYII=";
@@ -223,17 +224,7 @@ export async function loadModel(
         Array.isArray(node.material) ? node.material : [node.material]
       ).map((source, slot) => {
         originalMaterials.add(source);
-        const material = new THREE.MeshBasicMaterial({
-          name: source.name,
-          color: source.map ? 0xffffff : source.color || 0xcad3dc,
-          map: source.map,
-          transparent: source.transparent,
-          opacity: source.opacity,
-          alphaTest: source.alphaTest,
-          side: THREE.DoubleSide,
-          vertexColors: !!source.vertexColors,
-          toneMapped: false,
-        });
+        const material = createMeshMaterial(source, node.geometry);
         let data = bindings.resolve(node.name, source.name, slot, used);
         if (!data && !gltf) {
           const candidates = (resource.references || resource.entries).filter(
