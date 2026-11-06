@@ -10,10 +10,11 @@ import {
 import { kindNames } from "../core/formats.js";
 import { friendlyError } from "../core/async.js";
 import { readDrop } from "../library/drop.js";
+import { displayKind, displayKinds } from "../library/display-scope.js";
 const matchesKind = (resource, kind) =>
   kind === "all" ||
   (kind === "archive" && resource.kind === "archive") ||
-  (resource.detectedKind || resource.kind) === kind;
+  displayKind(resource) === kind;
 const matchesCategory = (resource, category) =>
   category === "all" || resource.category === category;
 
@@ -366,7 +367,9 @@ export class Shell {
   render() {
     this.app.covers.reset();
     this.cards.clear();
-    const all = this.app.catalog.resources,
+    const all = this.app.catalog.resources.filter((resource) =>
+        displayKind(resource),
+      ),
       query = this.query.normalize("NFKC").toLowerCase().trim();
     const kinds = ["all", ...new Set(all.map((resource) => resource.category))];
     this.nav.replaceChildren(
@@ -488,7 +491,7 @@ export class Shell {
       );
     const type = el("select");
     type.setAttribute("aria-label", "内容类型");
-    for (const [key, label] of Object.entries(kindNames))
+    for (const [key, label] of Object.entries(displayKinds))
       type.append(new Option(key === "all" ? "所有内容类型" : label, key));
     type.value = this.type;
     type.onchange = () => {
@@ -731,7 +734,7 @@ export class Shell {
       el(
         "p",
         "",
-        "支持 FBX、glTF、OBJ、3MF、3DS、AMF、VTK、VRML 等模型；OBJ 可关联本地 MTL 与贴图。图像支持 PSD、PSB、TGA、TIFF 及常见压缩纹理。ZIP、Unitypackage、TAR、7z、RAR、BZIP2、XZ 可在本地解析，递归嵌套最多 6 层。大 Unity 容器按需分块提取，上限 2 GB；普通文件、模型与 7z、RAR、BZIP2、XZ 容器上限 512 MB，更大的资源可先解压后添加目录。KTX、PVR 的压缩编码需要显卡支持，不兼容时会提示转换格式。",
+        "展示天空盒、材质与贴图、模型与道具。支持全景与六面天空盒，材质球体或平面展示；FBX、glTF、OBJ、3MF、3DS、AMF、VTK、VRML 等模型保持原有预览。ZIP、Unitypackage、TAR、7z、RAR、BZIP2、XZ 在本地解析，最多嵌套 6 层。大 Unity 容器上限 2 GB；普通文件与其他容器上限 512 MB。压缩贴图编码需要显卡支持。",
       ),
       el(
         "p",

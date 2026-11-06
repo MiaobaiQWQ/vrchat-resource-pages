@@ -157,8 +157,6 @@ export class Detail {
       ["files", "文件"],
       ["textures", "贴图"],
       ["preview", "3D 预览"],
-      ["unity", "Unity 资源"],
-      ["expressions", "表情与动画"],
     ]) {
       const node = button(
         label,
@@ -173,8 +171,6 @@ export class Detail {
       preview: el("div", "preview-pane"),
       files: el("div", "files-pane"),
       textures: el("div", "textures-pane"),
-      unity: el("div", "unity-pane"),
-      expressions: el("div", "expressions-pane"),
     };
     this.panes.preview.append(this.previewToolbar, this.stage, this.stats);
     for (const [name, pane] of Object.entries(this.panes))
@@ -191,8 +187,6 @@ export class Detail {
       this.tabs[key].classList.toggle("active", key === name);
     }
     if (name === "textures") this.renderTextures();
-    if (name === "expressions") this.renderExpressions();
-    if (name === "unity") this.renderUnity();
     this.viewer?.draw();
   }
   setBusy(text) {
@@ -376,24 +370,7 @@ export class Detail {
         if (shouldShowSky(entry, data, resource.entries))
           await this.showSky(entry, token);
         else await this.showImage(entry, token);
-      } else if (entry.kind === "audio" || entry.kind === "video") {
-        const url = await this.app.catalog.url(entry);
-        if (token !== this.token) return;
-        const media = el(entry.kind, "media-preview");
-        media.controls = true;
-        media.preload = "metadata";
-        media.src = url;
-        media.addEventListener("error", () => {
-          if (token === this.token)
-            this.message(
-              "浏览器不支持此媒体编码",
-              "可以使用下方按钮保存文件，并在本地播放器打开。",
-            );
-        });
-        this.stage.replaceChildren(media);
-      } else if (entry.kind === "document" || entry.kind === "unity")
-        await this.showText(entry, token);
-      else if (entry.kind === "world")
+      } else if (entry.kind === "world")
         this.message(
           "世界资源暂不支持预览",
           "可以在 Unity 中打开场景；此页面不执行包内脚本。",
