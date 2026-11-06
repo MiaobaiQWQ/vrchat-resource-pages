@@ -93,6 +93,7 @@ export function parseMaterial(text) {
     .find((slot) => slot?.guid);
   return {
     name: nameOf(text),
+    slots,
     main,
     alpha: slots._AlphaMask || slots._ClippingMask,
     color,

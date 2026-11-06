@@ -67,6 +67,9 @@ export class Detail {
       this.fillModelSelect();
       this.renderInfo();
       const model = this.app.catalog.chooseModel(resource),
+        material = resource.entries.find(
+          (entry) => extension(entry.path) === ".mat",
+        ),
         texture = resource.entries.find((entry) => entry.kind === "texture");
       if (resource.isWorld) {
         this.loadButton.disabled = true;
@@ -78,7 +81,8 @@ export class Detail {
       } else if (model) {
         this.modelSelect.value = model.id;
         await this.preview(model);
-      } else if (texture) await this.preview(texture);
+      } else if (material) await this.preview(material);
+      else if (texture) await this.preview(texture);
       else
         await this.preview(
           resource.entries.find(
@@ -365,6 +369,8 @@ export class Detail {
           "请在 Unity 中打开此资源。",
           "cube",
         );
+      else if (extension(entry.path) === ".mat")
+        await this.showMaterial(entry, token);
       else if (entry.kind === "texture") {
         const data = await this.app.images.decode(entry);
         if (shouldShowSky(entry, data, resource.entries))
@@ -609,11 +615,77 @@ export class Detail {
       ),
     );
   }
-  async showSky(entry, token) {
+  async showMaterial(entry, token) {
+    const { materialPreviewData } =
+      await import("../unity/material-preview.js");
+    const data = await materialPreviewData(
+      entry,
+      this.resource.references || this.resource.entries,
+    );
+    if (token !== this.token) return;
+    if (data.skyFaces) {
+      await this.showSky(data.skyFaces[0], token, data.skyFaces);
+      return;
+    }
+    if (data.slots._Tex?.guid && data.texture) {
+      await this.showSky(data.texture, token);
+      return;
+    }
+    await this.showSurface(entry, token, data);
+  }
+  async showSurface(entry, token, data, shape = "sphere") {
+    const { surfacePreview, ModelViewer } =
+      await import("../viewer/surface.js");
+    const loaded = await surfacePreview(data, this.app.images, shape);
+    if (token !== this.token) {
+      const { releaseObject } = await import("../viewer/engine.js");
+      releaseObject(loaded.object);
+      return;
+    }
+    this.viewer?.dispose();
+    this.viewer = null;
+    const canvas = el("canvas", "model-canvas");
+    canvas.setAttribute("aria-label", "材质预览");
+    this.stage.replaceChildren(canvas);
+    this.viewer = new ModelViewer(canvas);
+    this.viewer.set(loaded);
+    this.viewer.toggleGrid();
+    this.tabs.preview.textContent = "材质预览";
+    this.stage.append(
+      el("div", "scene-hints", "原始颜色与贴图 · 拖动旋转 · 滚轮缩放"),
+    );
+    const select = el("select");
+    select.setAttribute("aria-label", "材质展示形状");
+    select.append(new Option("球体", "sphere"), new Option("平面", "plane"));
+    select.value = shape;
+    select.onchange = async () => {
+      try {
+        await this.showSurface(entry, this.token, data, select.value);
+      } catch (error) {
+        toast(friendlyError(error));
+      }
+    };
+    this.materialSection.hidden = false;
+    this.materialSection.replaceChildren(
+      el("h3", "", "材质与贴图"),
+      select,
+      el("p", "muted", "展示原始颜色、主贴图与透明信息，不执行自定义着色器。"),
+    );
+    if (data.texture)
+      this.materialSection.append(
+        button("查看原贴图", "image", () => {
+          this.viewer?.dispose();
+          this.viewer = null;
+          this.showImage(data.texture, this.token);
+        }),
+      );
+  }
+  async showSky(entry, token, faces = null) {
     const loaded = await loadSkyTexture(
       entry,
       this.resource.entries,
       this.app.images,
+      faces,
     );
     if (token !== this.token) {
       loaded.texture.dispose();
@@ -682,6 +754,29 @@ export class Detail {
       ),
       zoomLabel,
       alpha,
+      button(
+        "球体展示",
+        "cube",
+        () =>
+          this.showSurface(entry, this.token, {
+            texture: entry,
+            color: [1, 1, 1, 1],
+            transparent: true,
+          }).catch((error) => toast(friendlyError(error))),
+        "text-button",
+      ),
+      button(
+        "平面展示",
+        "grid",
+        () =>
+          this.showSurface(
+            entry,
+            this.token,
+            { texture: entry, color: [1, 1, 1, 1], transparent: true },
+            "plane",
+          ).catch((error) => toast(friendlyError(error))),
+        "text-button",
+      ),
       button(
         "天空盒展示",
         "image",

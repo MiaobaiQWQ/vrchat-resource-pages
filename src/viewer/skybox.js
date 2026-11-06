@@ -48,9 +48,14 @@ export function shouldShowSky(entry, data, entries) {
   );
 }
 
-export async function loadSkyTexture(entry, entries, images) {
+export async function loadSkyTexture(
+  entry,
+  entries,
+  images,
+  explicitFaces = null,
+) {
   const THREE = await import("three");
-  const faces = cubeFaces(entry, entries);
+  const faces = explicitFaces || cubeFaces(entry, entries);
   if (faces) {
     const data = await Promise.all(faces.map((face) => images.decode(face)));
     if (
