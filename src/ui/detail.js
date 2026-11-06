@@ -12,6 +12,7 @@ import { kindNames } from "../core/formats.js";
 import { friendlyError } from "../core/async.js";
 import { describeUnity } from "../unity/metadata.js";
 import { shouldShowSky, loadSkyTexture, SkyViewer } from "../viewer/skybox.js";
+import { displayKind, displayKinds } from "../library/display-scope.js";
 
 export class Detail {
   token = 0;
@@ -255,7 +256,7 @@ export class Detail {
         "资源类型",
         resource.isWorld
           ? "世界"
-          : kindNames[resource.detectedKind || resource.kind],
+          : displayKinds[displayKind(resource)] || "暂无可展示内容",
       ],
       ["文件大小", sizeLabel(resource.size)],
       ["关联文件", `${resource.entries.length.toLocaleString()} 个`],

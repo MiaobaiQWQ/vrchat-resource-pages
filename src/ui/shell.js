@@ -610,7 +610,7 @@ export class Shell {
       el(
         "span",
         "kind-label",
-        kindNames[resource.detectedKind || resource.kind],
+        displayKinds[displayKind(resource)] || "暂无可展示内容",
       ),
       el("span", "", sizeLabel(resource.size)),
     );
@@ -667,7 +667,7 @@ export class Shell {
       thumb.title = message || "";
     }
     card.querySelector(".kind-label").textContent =
-      kindNames[resource.detectedKind || resource.kind];
+      displayKinds[displayKind(resource)] || "暂无可展示内容";
   }
   empty(filtered) {
     const node = el("section", "empty-state");
