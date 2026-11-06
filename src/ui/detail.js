@@ -11,6 +11,7 @@ import { extension, basename, comparisonKey } from "../core/paths.js";
 import { kindNames } from "../core/formats.js";
 import { friendlyError } from "../core/async.js";
 import { describeUnity } from "../unity/metadata.js";
+import { shouldShowSky, loadSkyTexture, SkyViewer } from "../viewer/skybox.js";
 
 export class Detail {
   token = 0;
@@ -134,7 +135,7 @@ export class Detail {
     this.loadButton.disabled = true;
     this.fit = iconButton("重新取景", "fit", () => this.viewer?.fit());
     this.grid = iconButton("显示或隐藏网格", "grid", () =>
-      this.viewer?.toggleGrid(),
+      this.viewer?.toggleGrid?.(),
     );
     this.previewToolbar.append(
       this.modelSelect,
@@ -364,8 +365,12 @@ export class Detail {
           "请在 Unity 中打开此资源。",
           "cube",
         );
-      else if (entry.kind === "texture") await this.showImage(entry, token);
-      else if (entry.kind === "audio" || entry.kind === "video") {
+      else if (entry.kind === "texture") {
+        const data = await this.app.images.decode(entry);
+        if (shouldShowSky(entry, data, resource.entries))
+          await this.showSky(entry, token);
+        else await this.showImage(entry, token);
+      } else if (entry.kind === "audio" || entry.kind === "video") {
         const url = await this.app.catalog.url(entry);
         if (token !== this.token) return;
         const media = el(entry.kind, "media-preview");
@@ -604,6 +609,44 @@ export class Detail {
       ),
     );
   }
+  async showSky(entry, token) {
+    const loaded = await loadSkyTexture(
+      entry,
+      this.resource.entries,
+      this.app.images,
+    );
+    if (token !== this.token) {
+      loaded.texture.dispose();
+      return;
+    }
+    const canvas = el("canvas", "model-canvas");
+    canvas.setAttribute("aria-label", "天空盒预览");
+    this.stage.replaceChildren(canvas);
+    let viewer;
+    try {
+      viewer = await SkyViewer.create(canvas, loaded);
+    } catch (error) {
+      loaded.texture.dispose();
+      throw error;
+    }
+    if (token !== this.token) {
+      viewer.dispose();
+      return;
+    }
+    this.viewer = viewer;
+    this.tabs.preview.textContent = "天空盒预览";
+    this.stage.append(el("div", "scene-hints", loaded.label));
+    this.materialSection.hidden = false;
+    this.materialSection.replaceChildren(
+      el("h3", "", "天空盒"),
+      el("p", "muted", "仅展示原始天空贴图，不影响模型光照。"),
+      button("查看原贴图", "image", () => {
+        this.viewer?.dispose();
+        this.viewer = null;
+        this.showImage(entry, this.token);
+      }),
+    );
+  }
   async showImage(entry, token) {
     const data = await this.app.images.decode(entry),
       url = await this.app.images.url(entry);
@@ -639,6 +682,18 @@ export class Detail {
       ),
       zoomLabel,
       alpha,
+      button(
+        "天空盒展示",
+        "image",
+        async () => {
+          try {
+            await this.showSky(entry, token);
+          } catch (error) {
+            toast(friendlyError(error));
+          }
+        },
+        "text-button",
+      ),
     );
     this.stage.replaceChildren(frame, controls);
     const models = this.app.catalog.compatibleModels(this.resource);
@@ -895,7 +950,7 @@ export class Detail {
   renderExpressions() {
     const pane = this.panes.expressions;
     pane.replaceChildren();
-    const expressions = this.viewer?.expressions() || [],
+    const expressions = this.viewer?.expressions?.() || [],
       anims = this.resource.entries.filter((entry) =>
         /\.(anim|controller|overridecontroller|mask)$/i.test(entry.path),
       );
